@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>6系部排课系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.4/dist/umd/supabase.min.js"></script>
+    <style>
+        html,
+        body {
+            width: 98%;
+            margin: 0 auto;
+            padding: 10px 0;
+            background: #f9f9f9;
+            font-size: 15px;
+            text-align: center !important;
+        }
+
+        .btn {
+            font-size: 20px !important;
+        }
+
+        .container-fluid {
+            max-width: 98% !important;
+        }
+
+        .dept-card {
+            margin-bottom: 2rem;
+        }
+
+        .cell {
+            padding: 6px;
+            min-height: 44px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            text-align: center;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+
+        .cell-conflict {
+            background: #ff5252 !important;
+            color: #fff;
+        }
+
+        .cell-modified {
+            background: #ff9800 !important;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .cell-empty {
+            background: #ffebee !important;
+        }
+
+        .table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            font-size: 15px;
+            background: #fff;
+            text-align: center !important;
+        }
+
+        th {
+            text-align: center !important;
+            background: #f5f5f5 !important;
+            padding: 8px;
+        }
+
+        td {
+            text-align: center !important;
+            background: #fff;
+            vertical-align: middle !important;
+        }
+
+        .grade-24 {
+            background-color: #e3f2fd !important;
+        }
+
+        .grade-25 {
+            background-color: #fce4ec !important;
+        }
+
+        .grade-26 {
+            background-color: #fff8e1 !important;
+        }
+
+        .grade-27 {
+            background-color: #e8f5e8 !important;
+        }
+
+        .grade-28 {
+            background-color: #fff3e0 !important;
+        }
+
+        .remark-row {
+            background-color: #f8f9fa !important;
+        }
+
+        .drag-row {
+            cursor: move;
+            user-select: none;
+        }
+
+        .drag-ing {
+            opacity: 0.3;
+        }
+
+        .drag-highlight {
+            border-top: 3px solid #007bff !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>6系部排课系统</h4>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                    onclick="location.href='授课安排表.html'">授课安排表</button>
+                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                    onclick="location.href='任课分布表.html'">任课分布表</button>
+                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                    onclick="location.href='课时汇总表.html'">课时汇总表</button>
+                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                    onclick="location.href='教师管理表.html'">教师管理表</button>
+                <button class="btn btn-sm btn-secondary ms-2" style="display: none;" onclick="logout()">退出登录</button>
+            </div>
+        </div>
+        <div class="mb-3">
+            <button class="btn btn-sm btn-success me-1" onclick="exportAll()">导出课表</button>
+            <button class="btn btn-sm btn-info me-1" style="display: none;" onclick="importTimetable()">导入课表</button>
+            <button class="btn btn-sm btn-warning me-1" onclick="saveToCloud()">保存修改</button>
+            <button class="btn btn-sm btn-danger" style="display: none;" onclick="clearAll()">清空数据库</button>
+        </div>
+        <div id="all-depts"></div>
+    </div>
+
+    <div class="modal fade" id="editModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5>编辑课程</h5>
+                </div>
+                <div class="modal-body p-3">
+                    <input type="hidden" id="m_dept"><input type="hidden" id="m_class"><input type="hidden"
+                        id="m_day"><input type="hidden" id="m_period">
+                    <div class="mb-2 text-start"><label>课程名称</label><input id="m_course" class="form-control"></div>
+                    <div class="mb-2 text-start"><label>授课教师</label><input id="m_teacher" class="form-control"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearOne()">删除本节</button>
+                    <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button class="btn btn-sm btn-primary" onclick="saveLesson()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addClassModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5>添加班级</h5>
+                </div>
+                <div class="modal-body p-3">
+                    <input type="hidden" id="target_dept">
+                    <div class="mb-2"><label>班级名称</label><input id="new_class_name" class="form-control"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-primary" onclick="saveNewClass()">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editClassModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5>修改班级名称</h5>
+                </div>
+                <div class="modal-body p-3">
+                    <input type="hidden" id="edit_dept"><input type="hidden" id="old_class_name">
+                    <div class="mb-2"><label>新班级名称</label><input id="edit_class_name" class="form-control"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-danger" onclick="deleteClassFromModal()">删除班级</button>
+                    <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button class="btn btn-sm btn-primary" onclick="saveEditClass()">保存修改</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ✅ 正确的 Supabase 连接信息
+        const SUPABASE_URL = "https://kpwnnqnlmfjzztfwytyw.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtwd25ucW5sbWZqenp0Znd5dHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDM4MjcsImV4cCI6MjA5MTI3OTgyN30.iJfnbvkou0GN5Fi2rEzreJ8D7Iol9WtgbFnW4Jvo9eQ";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const DAY_PERIODS = [
+            ["1-2", "3-4", "5-6", "7"],
+            ["1-2", "3-4", "5-6"],
+            ["1-2", "3-4", "5-6"],
+            ["1-2", "3-4", "5-6"],
+            ["1-2", "3-4", "5-6"]
+        ];
+        const DEPTS = {
+            dept1: { name: "高考部" },
+            dept2: { name: "学前教育部" },
+            dept3: { name: "信息技术部" },
+            dept4: { name: "现代服务部" },
+            dept5: { name: "财经商贸部" },
+            dept6: { name: "医药卫生部" }
+        };
+
+        const gradeColorMap = {
+            24: { rgb: "E3F2FD" },
+            25: { rgb: "FCE4EC" },
+            26: { rgb: "FFF8E1" },
+            27: { rgb: "E8F5E8" },
+            28: { rgb: "FFF3E0" },
+            other: { rgb: "FFFFFF" }
+        };
+
+        const headerStyles = {
+            deptTitle: { font: { bold: true, sz: 14 }, fill: { rgb: "F5F5F5" }, alignment: { wrapText: true, vertical: "center", horizontal: "center" } },
+            weekHeader: { font: { bold: true, sz: 12 }, fill: { rgb: "E3F2FD" }, alignment: { wrapText: true, vertical: "center", horizontal: "center" } },
+            periodHeader: { font: { bold: true, sz: 12 }, fill: { rgb: "F5F5F5" }, alignment: { wrapText: true, vertical: "center", horizontal: "center" } }
+        };
+
+        let data = {};
+        // 全局修改标记，从数据库读取，不再使用localStorage
+        let modifiedKeys = new Set();
+
+        function standardizeClassName(name) {
+            if (!name) return "";
+            return name.trim().replace(/（/g, "(").replace(/）/g, ")").replace(/\s+/g, "");
+        }
+
+        function getClassGrade(className) {
+            const match = className.match(/2[3-8]/);
+            return match ? parseInt(match[0]) : "other";
+        }
+
+        function sortClassesByGrade(classes) {
+            return [...classes].sort((a, b) => {
+                const aElect = /选修/.test(a);
+                const bElect = /选修/.test(b);
+                if (!aElect && bElect) return -1;
+                if (aElect && !bElect) return 1;
+                const getGrade = name => parseInt(name.match(/2[3-8]/)?.[0] || 99);
+                const gA = getGrade(a), gB = getGrade(b);
+                if (gA !== gB) return gA - gB;
+                return a.localeCompare(b, 'zh-CN');
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", async function () {
+            window.editModal = new bootstrap.Modal(document.getElementById("editModal"));
+            window.addClassModal = new bootstrap.Modal(document.getElementById("addClassModal"));
+            window.editClassModal = new bootstrap.Modal(document.getElementById("editClassModal"));
+            await loadAllData();
+            renderAll();
+            document.getElementById("all-depts").addEventListener("click", handleCellClick);
+            initDragSort();
+        });
+
+        function logout() { localStorage.clear(); location.href = "login.html"; }
+
+        // 加载数据：同步读取云端修改标记
+        async function loadAllData() {
+            for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
+            const { data: rows, error } = await supabaseClient.from("timetable_data").select("*");
+            if (error) {
+                console.error("加载失败:", error);
+                return;
+            }
+            const classOrder = {};
+            for (let d in DEPTS) classOrder[d] = [];
+            modifiedKeys.clear();
+            rows.forEach(r => {
+                const did = r.dept_id, cname = standardizeClassName(r.class_name);
+                if (!did || !cname) return;
+                if (!classOrder[did].includes(cname)) classOrder[did].push(cname);
+                const key = `${cname}-${r.day}-${r.period}`;
+                data[did].courses[key] = { c: r.course_name ?? "", t: r.teacher_name ?? "" };
+                if (r.remarks) data[did].remarks = r.remarks;
+                // 读取云端修改标记存入集合
+                if (Array.isArray(r.modified_key)) {
+                    r.modified_key.forEach(k => modifiedKeys.add(k));
+                }
+            });
+            for (let d in DEPTS) data[d].classes = sortClassesByGrade(classOrder[d]);
+        }
+
+        // 保存到云：课表+修改标记一起入库
+        async function saveToCloud() {
+            syncDragOrderToData();
+
+            // 清空全表
+            const { error: deleteError } = await supabaseClient.from("timetable_data").delete().not("id", "is", null);
+            if (deleteError) {
+                console.error("清空失败:", deleteError);
+                alert("❌ 清空旧数据失败");
+                return;
+            }
+
+            let courseBatch = [];
+            let remarkBatch = [];
+            const BATCH_SIZE = 100;
+
+            for (let d in DEPTS) {
+                for (let [k, v] of Object.entries(data[d].courses)) {
+                    let [cn, day, pd] = k.split("-");
+                    const course = v.c?.trim() === "" ? null : v.c;
+                    const teacher = v.t?.trim() === "" ? null : v.t;
+                    courseBatch.push({
+                        dept_id: d,
+                        class_name: cn,
+                        day: +day,
+                        period: +pd,
+                        course_name: course,
+                        teacher_name: teacher,
+                        modified_key: modifiedKeys.has(k) ? [k] : []
+                    });
+                }
+                if (data[d].remarks && data[d].remarks.trim() !== "") {
+                    remarkBatch.push({
+                        dept_id: d,
+                        remarks: data[d].remarks,
+                        modified_key: []
+                    });
+                }
+            }
+
+            // 插入课程
+            for (let i = 0; i < courseBatch.length; i += BATCH_SIZE) {
+                const slice = courseBatch.slice(i, i + BATCH_SIZE);
+                const { error: insErr } = await supabaseClient.from("timetable_data").insert(slice);
+                if (insErr) {
+                    console.error("课程插入失败", insErr);
+                    alert("保存失败：" + insErr.message);
+                    return;
+                }
+            }
+
+            // 插入备注
+            for (let i = 0; i < remarkBatch.length; i += BATCH_SIZE) {
+                const slice = remarkBatch.slice(i, i + BATCH_SIZE);
+                const { error: remErr } = await supabaseClient.from("timetable_data").insert(slice);
+                if (remErr) {
+                    console.error("备注插入失败", remErr);
+                    alert("备注保存失败");
+                    return;
+                }
+            }
+
+            alert("✅ 已成功保存至云数据库！");
+        }
+
+        function syncDragOrderToData() {
+            for (let d in DEPTS) {
+                const tbody = document.getElementById(`body-${d}`);
+                if (!tbody) continue;
+                const rows = tbody.querySelectorAll(".drag-row");
+                const newArr = [];
+                rows.forEach(row => newArr.push(standardizeClassName(row.dataset.clsname)));
+                data[d].classes = newArr;
+            }
+        }
+
+        function handleCellClick(e) {
+            const classCell = e.target.closest(".class-cell");
+            const lessonCell = e.target.closest(".lesson-cell");
+            if (classCell) openEditClass(classCell.dataset.dept, standardizeClassName(classCell.dataset.class));
+            if (lessonCell) editLesson(lessonCell.dataset.dept, standardizeClassName(lessonCell.dataset.class), +lessonCell.dataset.day, +lessonCell.dataset.period);
+        }
+
+        function openEditClass(d, c) {
+            document.getElementById("edit_dept").value = d;
+            document.getElementById("old_class_name").value = c;
+            document.getElementById("edit_class_name").value = c;
+            editClassModal.show();
+        }
+
+        function editLesson(d, c, day, p) {
+            const k = `${c}-${day}-${p}`;
+            const it = data[d].courses[k] || { c: "", t: "" };
+            document.getElementById("m_dept").value = d;
+            document.getElementById("m_class").value = c;
+            document.getElementById("m_day").value = day;
+            document.getElementById("m_period").value = p;
+            document.getElementById("m_course").value = it.c;
+            document.getElementById("m_teacher").value = it.t;
+            editModal.show();
+        }
+
+        async function saveLesson() {
+            const d = document.getElementById("m_dept").value;
+            const c = standardizeClassName(document.getElementById("m_class").value);
+            const dy = +document.getElementById("m_day").value;
+            const p = +document.getElementById("m_period").value;
+            const course = document.getElementById("m_course").value.trim();
+            const teacher = document.getElementById("m_teacher").value.trim();
+            if (teacher && hasConflict(d, c, dy, p, teacher)) return alert("⚠ 教师时段冲突");
+            const key = `${c}-${dy}-${p}`;
+            data[d].courses[key] = { c: course, t: teacher };
+            // 修改课时直接加入云端标记集合
+            modifiedKeys.add(key);
+            editModal.hide();
+            renderDept(d);
+            initDragSort();
+        }
+
+        function clearOne() {
+            const d = document.getElementById("m_dept").value;
+            const c = standardizeClassName(document.getElementById("m_class").value);
+            const dy = +document.getElementById("m_day").value;
+            const p = +document.getElementById("m_period").value;
+            const key = `${c}-${dy}-${p}`;
+            delete data[d].courses[key];
+            modifiedKeys.delete(key);
+            editModal.hide();
+            renderDept(d);
+            initDragSort();
+        }
+
+        function hasConflict(d, c, day, p, t) {
+            if (!t) return false;
+            for (let dd in DEPTS) {
+                for (let cc of data[dd].classes || []) {
+                    const it = data[dd].courses[`${cc}-${day}-${p}`];
+                    if (it && it.t === t && !(dd === d && cc === c)) return true;
+                }
+            }
+            return false;
+        }
+
+        function openAddClass(d) { document.getElementById("target_dept").value = d; addClassModal.show(); }
+        function saveNewClass() {
+            const d = document.getElementById("target_dept").value;
+            const name = standardizeClassName(document.getElementById("new_class_name").value);
+            if (!name || data[d].classes.includes(name)) return;
+            data[d].classes.push(name);
+            data[d].classes = sortClassesByGrade(data[d].classes);
+            addClassModal.hide();
+            renderDept(d);
+            initDragSort();
+        }
+        function deleteClassFromModal() {
+            const d = document.getElementById("edit_dept").value;
+            const name = standardizeClassName(document.getElementById("old_class_name").value);
+            if (!confirm("确定删除班级：" + name)) return;
+            data[d].classes = data[d].classes.filter(x => x !== name);
+            // 删除班级同步清理标记
+            for (let k in data[d].courses) {
+                if (k.startsWith(name + "-")) {
+                    modifiedKeys.delete(k);
+                    delete data[d].courses[k];
+                }
+            }
+            editClassModal.hide();
+            renderDept(d);
+            initDragSort();
+        }
+        function saveEditClass() {
+            const d = document.getElementById("edit_dept").value;
+            const old = standardizeClassName(document.getElementById("old_class_name").value);
+            const neo = standardizeClassName(document.getElementById("edit_class_name").value);
+            if (!neo || neo === old || data[d].classes.includes(neo)) return alert("班级已存在");
+            data[d].classes = data[d].classes.map(x => x === old ? neo : x);
+            const nc = {};
+            for (let k in data[d].courses) {
+                const newKey = k.replace(old + "-", neo + "-");
+                nc[newKey] = data[d].courses[k];
+                // 修改标记同步替换key
+                if (modifiedKeys.has(k)) {
+                    modifiedKeys.delete(k);
+                    modifiedKeys.add(newKey);
+                }
+            }
+            data[d].courses = nc;
+            data[d].classes = sortClassesByGrade(data[d].classes);
+            editClassModal.hide();
+            renderDept(d);
+            initDragSort();
+        }
+
+        async function importTimetable() {
+            let inp = document.createElement("input");
+            inp.type = "file"; inp.accept = ".xlsx,.xls";
+            inp.onchange = async e => {
+                let f = e.target.files[0];
+                let r = new FileReader();
+                r.readAsArrayBuffer(f);
+                r.onload = async ev => {
+                    for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
+                    modifiedKeys.clear();//导入清空修改标记
+                    let wb = XLSX.read(ev.target.result, { type: "array" });
+                    wb.SheetNames.forEach(s => {
+                        let j = XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1 });
+                        let cur = null;
+                        j.forEach((row, idx) => {
+                            let t = row?.join("")?.replace(/\s/g, "") || "";
+                            if (t.includes("高考部")) cur = "dept1";
+                            else if (t.includes("学前教育部")) cur = "dept2";
+                            else if (t.includes("信息技术部")) cur = "dept3";
+                            else if (t.includes("现代服务部")) cur = "dept4";
+                            else if (t.includes("财经商贸部")) cur = "dept5";
+                            else if (t.includes("医药卫生部")) cur = "dept6";
+                            if (!cur) return;
+                            let fc = standardizeClassName(String(row[0] || "").trim());
+                            if (!fc || !fc.includes("班") || /备注|节次/.test(fc)) return;
+                            let cn = fc;
+                            if (!data[cur].classes.includes(cn)) data[cur].classes.push(cn);
+                            let col = 1;
+                            for (let p = 0; p < 4; p++) {
+                                let c = String(row[col] || "").trim() || null;
+                                let t = String(j[idx + 1]?.[col++] || "").trim() || null;
+                                data[cur].courses[`${cn}-0-${p}`] = { c, t };
+                            }
+                            for (let day = 1; day < 5; day++) {
+                                for (let p = 0; p < 3; p++) {
+                                    let c = String(row[col] || "").trim() || null;
+                                    let t = String(j[idx + 1]?.[col++] || "").trim() || null;
+                                    data[cur].courses[`${cn}-${day}-${p}`] = { c, t };
+                                }
+                            }
+                        });
+                    });
+                    for (let d in DEPTS) data[d].classes = sortClassesByGrade(data[d].classes);
+                    await saveToCloud();
+                    renderAll();
+                    alert("✅ 导入成功！");
+                };
+            };
+            inp.click();
+        }
+
+        function exportAll() {
+            syncDragOrderToData();
+
+            const colorMap = {
+                "24": "E3F2FD",
+                "25": "FCE4EC",
+                "26": "FFF8E1",
+                "27": "E8F5E8",
+                "28": "FFF3E0",
+                "other": "FFFFFF"
+            };
+            const head1 = "F5F5F5";
+            const head2 = "E3F2FD";
+
+            const wb = XLSX.utils.book_new();
+            const aoa = [];
+            const merges = [];
+            let r = 0;
+            let hasAnyData = false;
+
+            for (let d in DEPTS) {
+                const dn = DEPTS[d].name;
+                const cls = data[d].classes || [];
+                if (!cls.length) continue;
+                hasAnyData = true;
+
+                aoa.push([{ v: dn, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } }]);
+                merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 16 } });
+                r++;
+
+                const week = ["班级", "星期一", "", "", "", "星期二", "", "", "星期三", "", "", "星期四", "", "", "星期五", "", ""];
+                aoa.push(week.map(v => ({ v, s: { fill: { fgColor: { rgb: head2 }, patternType: "solid" } } })));
+                merges.push(
+                    { s: { r: r, c: 1 }, e: { r: r, c: 4 } },
+                    { s: { r: r, c: 5 }, e: { r: r, c: 7 } },
+                    { s: { r: r, c: 8 }, e: { r: r, c: 10 } },
+                    { s: { r: r, c: 11 }, e: { r: r, c: 13 } },
+                    { s: { r: r, c: 14 }, e: { r: r, c: 16 } }
+                );
+                r++;
+
+                const period = ["节次", "1-2", "3-4", "5-6", "7", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6"];
+                aoa.push(period.map(v => ({ v, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } })));
+                r++;
+
+                cls.forEach(cn => {
+                    const std = standardizeClassName(cn);
+                    const g = getClassGrade(cn);
+                    const rgb = colorMap[g] || colorMap.other;
+
+                    const row1 = [cn];
+                    const row2 = [""];
+                    for (let day = 0; day < 5; day++) {
+                        for (let p = 0; p < DAY_PERIODS[day].length; p++) {
+                            const k = `${std}-${day}-${p}`;
+                            const item = data[d].courses[k] || { c: "", t: "" };
+                            row1.push(item.c);
+                            row2.push(item.t);
+                        }
+                    }
+
+                    const style = { fill: { fgColor: { rgb: rgb }, patternType: "solid" } };
+                    aoa.push(row1.map(v => ({ v, s: style })));
+                    const r1 = r++;
+                    aoa.push(row2.map(v => ({ v, s: style })));
+                    const r2 = r++;
+
+                    merges.push({ s: { r: r1, c: 0 }, e: { r: r2, c: 0 } });
+                });
+
+                aoa.push([]);
+                r++;
+            }
+
+            if (!hasAnyData) {
+                aoa.push([{ v: "全校课表", s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } }]);
+                merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 16 } });
+                aoa.push(["班级", "星期一", "", "", "", "星期二", "", "", "星期三", "", "", "星期四", "", "", "星期五", "", ""].map(v => ({ v, s: { fill: { fgColor: { rgb: head2 }, patternType: "solid" } } })));
+                aoa.push(["节次", "1-2", "3-4", "5-6", "7", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6"].map(v => ({ v, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } })));
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!merges'] = merges;
+            ws['!cols'] = Array(17).fill({ wch: 13 });
+
+            XLSX.utils.book_append_sheet(wb, ws, "全校课表");
+            XLSX.writeFile(wb, "6系部课表_带底色.xlsx", { bookSST: false });
+            alert("✅ 导出成功");
+        }
+
+        // 清空数据库
+        async function clearAll() {
+            if (!confirm("确定清空所有数据？此操作不可恢复！")) return;
+
+            const { error } = await supabaseClient.from("timetable_data").delete().not("id", "is", null);
+            if (error) {
+                console.error(error);
+                alert("❌ 清空失败");
+                return;
+            }
+            modifiedKeys.clear();
+            for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
+            renderAll();
+            alert("✅ 已清空所有数据");
+        }
+
+        function renderAll() {
+            let html = "";
+            for (let d in DEPTS) {
+                html += `<div class="card dept-card p-3"><h5 class="text-start">${DEPTS[d].name}</h5>`;
+                html += `
+                    <button class="btn btn-sm btn-primary mb-2" onclick="openAddClass('${d}')">+添加班级</button>
+                    <button class="btn btn-sm btn-secondary mb-2 ms-2" onclick="clearSavedMark('${d}')">清除修改样式</button>
+                `;
+                html += `<div class="table-responsive"><table class="table"><thead>
+                <tr><th>班级</th><th colspan="4">星期一</th><th colspan="3">星期二</th><th colspan="3">星期三</th><th colspan="3">星期四</th><th colspan="3">星期五</th></tr>
+                <tr><th>节次</th><th>1-2</th><th>3-4</th><th>5-6</th><th>7</th><th>1-2</th><th>3-4</th><th>5-6</th><th>1-2</th><th>3-4</th><th>5-6</th><th>1-2</th><th>3-4</th><th>5-6</th><th>1-2</th><th>3-4</th><th>5-6</th></tr>
+                </thead><tbody id="body-${d}"></tbody></table></div></div>`;
+            }
+            document.getElementById("all-depts").innerHTML = html;
+            for (let d in DEPTS) renderDept(d);
+        }
+
+        function renderDept(deptId) {
+            const tb = document.getElementById(`body-${deptId}`);
+            const classes = data[deptId].classes || [];
+            if (!classes.length) { tb.innerHTML = `<tr><td colspan="17">暂无班级</td>`; return; }
+            let html = "";
+            classes.forEach(cn => {
+                const stdCn = standardizeClassName(cn);
+                const grade = cn.match(/2[3-8]/)?.[0] || "other";
+                const gc = `grade-${grade}`;
+                html += `<tr class="drag-row" data-dept="${deptId}" data-clsname="${stdCn}">
+                    <td class="cell class-cell ${gc}" data-dept="${deptId}" data-class="${stdCn}">${cn}</td>`;
+                for (let day = 0; day < 5; day++) {
+                    for (let p = 0; p < DAY_PERIODS[day].length; p++) {
+                        const key = `${stdCn}-${day}-${p}`;
+                        const it = data[deptId].courses[key] || { c: "", t: "" };
+                        const bad = hasConflict(deptId, stdCn, day, p, it.t);
+                        let cls = "cell lesson-cell";
+                        const isEmpty = !it.c || !it.t;
+                        if (isEmpty) cls += " cell-empty";
+                        else if (bad) cls += " cell-conflict";
+                        else if (modifiedKeys.has(key)) cls += " cell-modified";
+                        html += `<td class="${cls}" data-dept="${deptId}" data-class="${stdCn}" data-day="${day}" data-period="${p}">${it.c}${it.t ? "<br><small>" + it.t + "</small>" : ""}</td>`;
+                    }
+                }
+                html += `</tr>`;
+            });
+            html += `<tr class="remark-row"><td colspan="17"><div class="d-flex align-items-center"><span class="fw-bold me-2">备注：</span><input class="form-control" value="${data[deptId].remarks || ""}" oninput="data['${deptId}'].remarks=this.value"></div></td></tr>`;
+            tb.innerHTML = html;
+            initDragSort();
+        }
+
+        // 清除本系所有橙色标记
+        function clearSavedMark(deptId) {
+            data[deptId].classes.forEach(cls => {
+                const stdCls = standardizeClassName(cls);
+                for (let day = 0; day < 5; day++)for (let p = 0; p < DAY_PERIODS[day].length; p++) {
+                    let k = `${stdCls}-${day}-${p}`;
+                    modifiedKeys.delete(k);
+                }
+            });
+            renderDept(deptId);
+        }
+
+        function initDragSort() {
+            document.querySelectorAll("tbody").forEach(tbody => {
+                let dragRow = null;
+                tbody.querySelectorAll(".drag-row").forEach(row => {
+                    row.draggable = true;
+                    row.ondragstart = e => { dragRow = row; row.classList.add("drag-ing"); }
+                    row.ondragend = () => { dragRow = null; tbody.querySelectorAll(".drag-row").forEach(r => r.classList.remove("drag-highlight", "drag-ing")); }
+                    row.ondragover = e => { e.preventDefault(); if (row !== dragRow) row.classList.add("drag-highlight"); }
+                    row.ondragleave = () => row.classList.remove("drag-highlight");
+                    row.ondrop = e => {
+                        e.preventDefault();
+                        if (!dragRow || dragRow === row) return;
+                        const y = e.clientY;
+                        const rect = row.getBoundingClientRect();
+                        if (y < rect.top + rect.height / 2) row.before(dragRow);
+                        else row.after(dragRow);
+                    }
+                })
+            })
+        }
+    </script>
+</body>
+
+</html>
