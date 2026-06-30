@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>授课安排表生成系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap/5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        html,
+        body {
+            width: 98%;
+            margin: 0 auto;
+            padding: 10px 0;
+            background: #f9f9f9;
+            font-size: 14px;
+        }
+
+        .container-fluid {
+            max-width: 98% !important;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            font-size: 13px;
+            border: 1px solid #333 !important;
+        }
+
+        th,
+        td {
+            border: 1px solid #333 !important;
+            padding: 6px;
+            text-align: center;
+            vertical-align: middle;
+            word-wrap: break-word;
+            background: transparent !important;
+        }
+
+        th {
+            background: #f5f9fc !important;
+            font-weight: bold;
+            position: relative;
+        }
+
+        .filter-btn {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            cursor: pointer;
+            font-size: 10px;
+            opacity: 0.7;
+            z-index: 10;
+        }
+
+        .filter-btn:hover {
+            opacity: 1;
+        }
+
+        .filter-menu {
+            position: absolute;
+            background: #fff;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px #0002;
+            z-index: 9999;
+            padding: 10px;
+            border-radius: 4px;
+            min-width: 180px;
+            display: none;
+            text-align: left;
+        }
+
+        .filter-menu.show {
+            display: block;
+        }
+
+        .filter-menu-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .filter-menu-actions {
+            margin-bottom: 5px;
+        }
+
+        .filter-search-box {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            box-sizing: border-box;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .filter-search-box:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 3px rgba(13, 110, 253, .25);
+        }
+
+        .filter-menu-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border-top: 1px solid #eee;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 0;
+            font-size: 12px;
+        }
+
+        .filter-item input {
+            margin-right: 8px;
+        }
+
+        .btn-sm-action {
+            font-size: 12px;
+            padding: 2px 8px;
+        }
+
+        .summary-row {
+            background: #fff3cd !important;
+            font-weight: bold;
+        }
+
+        td[contenteditable="true"] {
+            cursor: text;
+        }
+
+        td[contenteditable="true"]:focus {
+            background: #fff9c2 !important;
+            outline: 1px solid #ffc107;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+
+            #print-area,
+            #print-area * {
+                visibility: visible;
+            }
+
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+
+            button,
+            .filter-menu,
+            .filter-btn,
+            .del-btn-col {
+                display: none !important;
+            }
+
+            .table {
+                font-size: 11px;
+            }
+        }
+
+        .btn {
+            font-size: 18px;
+        }
+
+        .btn-danger {
+            font-size: 14px;
+
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>授课安排表生成系统（云数据版）</h4>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="location.href='课程安排表.html'">课程安排表</button>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="location.href='教师管理表.html'">教师管理表</button>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="location.href='课时汇总表.html'">课时汇总表</button>
+                <button class="btn btn-sm btn-outline-primary me-2" onclick="location.href='任课分布表.html'">任课分布表</button>
+                <button class="btn btn-sm btn-success" onclick="window.print()">🖨️ 打印</button>
+                <button class="btn btn-sm btn-warning" onclick="exportExcel()">📊 导出Excel</button>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <button class="btn btn-sm btn-info me-1 edit-btn" onclick="loadCloudData()">☁️ 从云端导入源数据</button>
+            <button class="btn btn-sm btn-success me-1 edit-btn" onclick="buildTable()">📋 生成授课安排表</button>
+            <button class="btn btn-sm btn-warning me-1 edit-btn" onclick="saveAllToCloud()">💾 保存到云端</button>
+            <button class="btn btn-sm btn-dark me-1 edit-btn" onclick="loadSavedData()">📥 读取云端授课表</button>
+            <button class="btn btn-sm btn-secondary me-1" onclick="resetAllFilters()">🔄重置筛选</button>
+            <button class="btn btn-sm btn-primary me-1 edit-btn" onclick="addEmptyRow()">➕ 添加一行</button>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">🚪 退出登录</button>
+        </div>
+
+        <div id="print-area">
+            <h3 class="text-center mb-3">海丰县中等职业技术学校 授课安排表</h3>
+            <div class="table-responsive">
+                <table id="mainTab" class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">序号<span class="filter-btn" data-field="seq">🔍</span></th>
+                            <th rowspan="2">类别<span class="filter-btn" data-field="category">🔍</span></th>
+                            <th rowspan="2">系部<span class="filter-btn" data-field="dept">🔍</span></th>
+                            <th rowspan="2">年级<span class="filter-btn" data-field="grade">🔍</span></th>
+                            <th rowspan="2">办学形式<span class="filter-btn" data-field="studyForm">🔍</span></th>
+                            <th rowspan="2">专业<span class="filter-btn" data-field="major">🔍</span></th>
+                            <th rowspan="2">科目<span class="filter-btn" data-field="course">🔍</span></th>
+                            <th rowspan="2">开设节数<span class="filter-btn" data-field="openPeriods">🔍</span></th>
+                            <th rowspan="2">专业组<span class="filter-btn" data-field="majorGroup">🔍</span></th>
+                            <th colspan="7">班级设置</th>
+                            <th rowspan="2">总节数<span class="filter-btn" data-field="totalPeriods">🔍</span></th>
+                            <th rowspan="2">任课教师<span class="filter-btn" data-field="teacher">🔍</span></th>
+                            <th rowspan="2">备注</th>
+                            <th rowspan="2" class="del-btn-col">操作</th>
+                        </tr>
+                        <tr>
+                            <th>1<span class="filter-btn" data-field="c1">🔍</span></th>
+                            <th>2<span class="filter-btn" data-field="c2">🔍</span></th>
+                            <th>3<span class="filter-btn" data-field="c3">🔍</span></th>
+                            <th>4<span class="filter-btn" data-field="c4">🔍</span></th>
+                            <th>5<span class="filter-btn" data-field="c5">🔍</span></th>
+                            <th>6<span class="filter-btn" data-field="c6">🔍</span></th>
+                            <th>7<span class="filter-btn" data-field="c7">🔍</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="filterMenuContainer"></div>
+
+    <script>
+        const supabaseUrl = "https://kpwnnqnlmfjzztfwytyw.supabase.co";
+        const supabaseKey = "sb_publishable_-P1Mb1SG2j8twruY5xC8nA_X1FD0--r";
+        const SB = supabase.createClient(supabaseUrl, supabaseKey);
+
+        const DEPTS = {
+            dept1: "高考部", dept2: "学前教育部",
+            dept3: "信息技术部", dept4: "现代服务部",
+            dept5: "财经商贸部", dept6: "医药卫生部"
+        };
+
+        let timetableData = [];
+        let teacherMapData = [];
+        let fullData = [];
+        let currentFilters = {};
+        let currentSort = { field: null, direction: null };
+
+        const role = localStorage.getItem("role");
+        const LEVEL = { user: 1, minister: 2, admin: 3 };
+        const hasPermission = (min) => LEVEL[role || "user"] >= LEVEL[min];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!hasPermission("minister")) {
+                document.querySelectorAll(".edit-btn").forEach(el => el.style.display = "none");
+            }
+            loadSavedData();
+        });
+
+        // ==============================================
+        // 🔥 无限加载所有数据，无1000条限制，永远读全量
+        // ==============================================
+        async function fetchAllData(table) {
+            let allData = [];
+            let page = 0;
+            const perPage = 1000;
+
+            while (true) {
+                const { data, error } = await SB
+                    .from(table)
+                    .select("*")
+                    .range(page * perPage, (page + 1) * perPage - 1);
+
+                if (error || !data || data.length === 0) break;
+
+                allData = allData.concat(data);
+                page++;
+
+                if (data.length < perPage) break;
+            }
+
+            return allData;
+        }
+
+        // ✅ 添加空行
+        function addEmptyRow() {
+            if (!hasPermission("minister")) return;
+            fullData.push({
+                seq: fullData.length + 1,
+                category: "",
+                dept: "",
+                grade: "",
+                studyForm: "",
+                major: "",
+                course: "",
+                openPeriods: 0,
+                majorGroup: "",
+                teacher: "",
+                totalPeriods: 0,
+                remark: "",
+                classes: ["", "", "", "", "", "", ""]
+            });
+            renderHtml();
+        }
+
+        // ✅ 删除单行
+        function deleteSingleRow(index) {
+            if (!hasPermission("minister")) return;
+            if (!confirm("确定删除这一行？")) return;
+            fullData.splice(index, 1);
+            renderHtml();
+        }
+
+        // ✅ 单元格双击编辑
+        function editCell(rowIdx, field, val) {
+            if (!hasPermission("minister")) return;
+            const item = fullData[rowIdx];
+            if (!item) return;
+
+            switch (field) {
+                case "category": item.category = val; break;
+                case "dept": item.dept = val; break;
+                case "grade": item.grade = val; break;
+                case "studyForm": item.studyForm = val; break;
+                case "major": item.major = val; break;
+                case "course": item.course = val; break;
+                case "openPeriods": item.openPeriods = Number(val) || 0; break;
+                case "majorGroup": item.majorGroup = val; break;
+                case "teacher": item.teacher = val; break;
+                case "totalPeriods": item.totalPeriods = Number(val) || 0; break;
+                case "remark": item.remark = val; break;
+                case "c1": item.classes[0] = val; break;
+                case "c2": item.classes[1] = val; break;
+                case "c3": item.classes[2] = val; break;
+                case "c4": item.classes[3] = val; break;
+                case "c5": item.classes[4] = val; break;
+                case "c6": item.classes[5] = val; break;
+                case "c7": item.classes[6] = val; break;
+            }
+            item.totalPeriods = (item.openPeriods || 0) * (item.classes?.filter(Boolean).length || 0);
+            renderHtml();
+        }
+
+        // 【修复后的分割函数：/后空白自动保留空字符串】
+        function splitCourseAndTeacher(courseStr, teacherStr) {
+            const courses = courseStr.split("/").map(c => c.trim());
+            const teachers = teacherStr.split("/").map(t => t.trim());
+            const result = [];
+            const maxLen = Math.max(courses.length, teachers.length);
+            for (let i = 0; i < maxLen; i++) {
+                const course = courses[i] ?? "";
+                const teacher = teachers[i] ?? "";
+                result.push({ course, teacher });
+            }
+            return result;
+        }
+
+        function splitAllTeacherByDunHao(teacherStr) {
+            if (!teacherStr) return [teacherStr];
+            return teacherStr.split(/、/).map(t => t.trim()).filter(Boolean);
+        }
+
+        function getPureMajor(text) {
+            if (!text) return text;
+            let idx = text.search(/\d/);
+            return idx === -1 ? text : text.substring(0, idx).trim();
+        }
+
+        function isIgnore(week, section) {
+            const w = String(week || "").trim();
+            const s = String(section || "").trim();
+            if (w === "周一" && s === "7") return true;
+            if (w === "周五" && (s === "5-6" || s === "56")) return true;
+            return false;
+        }
+
+        function getMajorGroup(course, major) {
+            const map = {
+                "语文": "语文组", "数学": "数学组", "英语": "英语组", "体育": "体育组",
+                "思政": "思想政治组", "心理健康": "思想政治组", "信息技术": "信息技术组"
+            };
+            for (let k in map) if (course.includes(k)) return map[k];
+            return major + "组";
+        }
+
+        async function loadCloudData() {
+            if (!hasPermission("minister")) return;
+            try {
+                // 🔥 无限读取课表 + 教师数据
+                timetableData = await fetchAllData("timetable_data");
+                teacherMapData = await fetchAllData("teacher_management");
+
+                alert(`✅ 云端源数据已完整加载
+课表数据：${timetableData.length} 条
+教师数据：${teacherMapData.length} 条`);
+            } catch (e) {
+                alert("读取失败：" + e.message);
+            }
+        }
+
+        function buildTable() {
+            if (!hasPermission("minister")) return;
+            const temp = [];
+            const classDeptMap = {};
+            timetableData.forEach(item => {
+                if (item.class_name && item.dept_id) {
+                    classDeptMap[item.class_name] = item.dept_id;
+                }
+            });
+            const allClasses = [...new Set(timetableData.map(i => i.class_name))].filter(Boolean);
+
+            for (const className of allClasses) {
+                const deptId = classDeptMap[className];
+                const deptName = DEPTS[deptId] || "未知";
+                const gradeMatch = className.match(/\b(2[3-8])\b/);
+                const gradeNum = gradeMatch ? gradeMatch[1] : "other";
+                const majorMatch = className.match(/^(.+?)(2[3-8])/);
+                const rawMajor = majorMatch ? majorMatch[1].trim() : "其他";
+                const major = getPureMajor(rawMajor);
+                const studyForm = className.includes("三二分段") ? "三二分段" : className.includes("三四分段") ? "三四分段" : "中职";
+                const cleanName = className.split("班")[0] + "班";
+                const countMap = {};
+
+                const items = timetableData.filter(i => i.class_name === className);
+                items.forEach(item => {
+                    const { course_name, teacher_name, week, section } = item;
+                    if (isIgnore(week, section)) return;
+                    if (!course_name || !teacher_name) return;
+                    if (course_name.includes("班会") || course_name.includes("安全教育") || course_name.includes("劳动教育")) return;
+
+                    if (course_name.includes("/")) {
+                        const pairs = splitCourseAndTeacher(course_name, teacher_name);
+                        pairs.forEach(p => {
+                            const tList = splitAllTeacherByDunHao(p.teacher);
+                            tList.forEach(t => {
+                                temp.push({
+                                    dept: deptName,
+                                    grade: `20${gradeNum}`,
+                                    gradeNum,
+                                    major,
+                                    course: p.course,
+                                    teacher: t,
+                                    openPeriods: 1,
+                                    studyForm,
+                                    className: cleanName
+                                });
+                            });
+                        });
+                    } else {
+                        const tList = splitAllTeacherByDunHao(teacher_name);
+                        tList.forEach(t => {
+                            const key = course_name + "|" + t;
+                            countMap[key] = (countMap[key] || 0) + 1;
+                        });
+                    }
+                });
+
+                for (let key in countMap) {
+                    const [course, teacher] = key.split("|");
+                    temp.push({
+                        dept: deptName,
+                        grade: `20${gradeNum}`,
+                        gradeNum,
+                        major,
+                        course,
+                        teacher,
+                        openPeriods: countMap[key] * 2,
+                        studyForm,
+                        className: cleanName
+                    });
+                }
+            }
+
+            const map = new Map();
+            temp.forEach(item => {
+                const k = `${item.dept}|${item.grade}|${item.major}|${item.course}|${item.teacher}|${item.studyForm}`;
+                if (!map.has(k)) map.set(k, { ...item, classes: [] });
+                const e = map.get(k);
+                if (!e.classes.includes(item.className)) e.classes.push(item.className);
+            });
+
+            fullData = Array.from(map.values()).map((item, i) => {
+                let category = "常规";
+                if (item.gradeNum === "23") category = "就业班";
+                if (item.gradeNum === "24") category = "未分班";
+                if (item.gradeNum === "25") category = "新生班";
+                const partTimeTeachers = new Set([
+                    "吕维平", "李秋菊", "黎泓毅", "李家松", "许宇南", "林欣欣", "庄丹完", "吴文浩"
+                ]);
+                let remarkText = "";
+                if (partTimeTeachers.has(item.teacher)) {
+                    remarkText = "校外兼职";
+                }
+                return {
+                    ...item,
+                    seq: i + 1,
+                    category,
+                    majorGroup: getMajorGroup(item.course, item.major),
+                    totalPeriods: item.openPeriods * item.classes.length,
+                    remark: remarkText
+                };
+            });
+
+            fullData.sort((a, b) => {
+                if (a.dept !== b.dept) return a.dept.localeCompare(b.dept);
+                if (a.major !== b.major) return a.major.localeCompare(b.major);
+                if (a.gradeNum !== b.gradeNum) return b.gradeNum.localeCompare(a.gradeNum);
+                if (a.studyForm !== b.studyForm) return a.studyForm.localeCompare(b.studyForm);
+                return a.teacher.localeCompare(b.teacher);
+            });
+
+            renderHtml();
+        }
+
+        function renderHtml() {
+            let html = "";
+            let sum = 0;
+            let realSeq = 1;
+            fullData.forEach((item, idx) => {
+                const c = item.classes || [];
+                while (c.length < 7) c.push("");
+                sum += item.totalPeriods || 0;
+
+                let cateBg = "#ffffff";
+                const cate = (item.category || "").trim().toLowerCase();
+                if (cate === "常规") cateBg = "#e3f2fd";
+                else if (cate === "就业班") cateBg = "#ffe0b2";
+                else if (cate === "未分班") cateBg = "#fce4ec";
+                else if (cate === "新生班") cateBg = "#e8f5e8";
+
+                let deptBg = "#ffffff";
+                const deptTxt = (item.dept || "").trim();
+                if (deptTxt.includes("高考部")) deptBg = "#e6f7ff";
+                else if (deptTxt.includes("学前教育部")) deptBg = "#fef0f8";
+                else if (deptTxt.includes("信息技术部")) deptBg = "#edf7ff";
+                else if (deptTxt.includes("现代服务部")) deptBg = "#fcffe6";
+                else if (deptTxt.includes("财经商贸部")) deptBg = "#fff4e5";
+                else if (deptTxt.includes("医药卫生部")) deptBg = "#f0f8ff";
+
+                let gradeBg = "#ffffff";
+                const grade = (item.grade || "").trim();
+                if (grade.includes("2023")) gradeBg = "#fce4ec";
+                else if (grade.includes("2024")) gradeBg = "#e8f5e8";
+                else if (grade.includes("2025")) gradeBg = "#fff8e1";
+
+                let studyBg = "#ffffff";
+                const study = (item.studyForm || "").trim();
+                if (study.includes("中职")) studyBg = "#e3f2fd";
+                else if (study.includes("三二分段")) studyBg = "#f3e5f5";
+                else if (study.includes("三四分段")) studyBg = "#ffe0b2";
+
+                html += `<tr>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'seq',this.innerText)">${realSeq++}</td>
+            <td style="background-color:${cateBg} !important; font-weight:500;" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'category',this.innerText)">${item.category}</td>
+            <td style="background-color:${deptBg} !important" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'dept',this.innerText)">${item.dept}</td>
+            <td style="background-color:${gradeBg} !important" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'grade',this.innerText)">${item.grade}</td>
+            <td style="background-color:${studyBg} !important" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'studyForm',this.innerText)">${item.studyForm}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'major',this.innerText)">${item.major}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'course',this.innerText)">${item.course}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'openPeriods',this.innerText)">${item.openPeriods}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'majorGroup',this.innerText)">${item.majorGroup}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c1',this.innerText)">${c[0]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c2',this.innerText)">${c[1]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c3',this.innerText)">${c[2]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c4',this.innerText)">${c[3]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c5',this.innerText)">${c[4]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c6',this.innerText)">${c[5]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c7',this.innerText)">${c[6]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'totalPeriods',this.innerText)">${item.totalPeriods}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'teacher',this.innerText)">${item.teacher}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'remark',this.innerText)">${item.remark || ""}</td>
+            <td class="del-btn-col"><button class="btn btn-sm btn-danger" onclick="deleteSingleRow(${idx})">删除</button></td>
+        </tr>`;
+            });
+            html += `<tr class="summary-row">
+        <td colspan="16" style="text-align:right;">合计总节数：</td>
+        <td id="totalSum">${sum}</td>
+        <td class="del-btn-col"></td>
+    </tr>`;
+            document.getElementById("tbBody").innerHTML = html;
+        }
+
+        function getCellValue(item, field) {
+            if (field === "seq") return item.seq || "";
+            if (field === "category") return item.category || "";
+            if (field === "dept") return item.dept || "";
+            if (field === "grade") return item.grade || "";
+            if (field === "studyForm") return item.studyForm || "";
+            if (field === "major") return item.major || "";
+            if (field === "course") return item.course || "";
+            if (field === "openPeriods") return item.openPeriods || "";
+            if (field === "majorGroup") return item.majorGroup || "";
+            if (field === "totalPeriods") return item.totalPeriods || "";
+            if (field === "teacher") return item.teacher || "";
+            if (field.startsWith("c")) {
+                const idx = parseInt(field[1]) - 1;
+                return item.classes?.[idx] || "";
+            }
+            return "";
+        }
+
+        function openFilterMenu(e, field) {
+            e.stopPropagation();
+            closeFilterMenu();
+            const btn = e.currentTarget;
+            const rect = btn.getBoundingClientRect();
+            const box = document.getElementById("filterMenuContainer");
+
+            const vals = [...new Set(
+                fullData.map(x => getCellValue(x, field)).filter(v => v !== "" && v != null)
+            )].sort();
+
+            const sel = currentFilters[field] || [];
+
+            let html = `<div class="filter-menu show" style="top:${rect.bottom + window.scrollY}px;left:${rect.left + window.scrollX}px">
+                <div class="filter-menu-header"><span>筛选:${btn.parentElement.innerText.trim().replace("🔍", "")}</span><button class="btn-close" style="font-size:10px" onclick="closeFilterMenu()"></button></div>
+                <div class="filter-menu-actions">
+                    <button class="btn btn-sm btn-light btn-sm-action" onclick="sortData('${field}','asc')">升序</button>
+                    <button class="btn btn-sm btn-light btn-sm-action" onclick="sortData('${field}','desc')">降序</button>
+                    <button class="btn btn-sm btn-secondary btn-sm-action" onclick="clearSort()">清除排序</button>
+                </div>
+                <div style="border-top:1px solid #ddd;margin:5px 0"></div>
+                <div class="filter-menu-actions">
+                    <label><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">全选</label>
+                    <button class="btn btn-sm btn-link" onclick="invertSelection()">反选</button>
+                </div>
+                <input class="filter-search-box" placeholder="🔍 搜索筛选" id="filterSearchInput" oninput="handleSearchFilter()">
+                <div class="filter-menu-actions" style="text-align:right">
+                    <button class="btn btn-sm btn-outline-danger" onclick="resetFilter('${field}')">重置筛选</button>
+                </div>
+                <div class="filter-menu-list">`;
+
+            vals.forEach(v => {
+                let chk = sel.length === 0 || sel.includes(String(v)) ? "checked" : "";
+                html += `<div class="filter-item"><input class="filter-check" type="checkbox" value="${v}" ${chk} onchange="applyFilterCheck('${field}')"><span>${v}</span></div>`;
+            });
+
+            html += `</div></div>`;
+            box.innerHTML = html;
+        }
+
+        function handleSearchFilter() {
+            let key = document.getElementById("filterSearchInput").value.toLowerCase();
+            document.querySelectorAll(".filter-item").forEach(el => {
+                let t = el.querySelector("span").innerText.toLowerCase();
+                el.style.display = t.includes(key) ? "flex" : "none";
+            });
+        }
+
+        function resetFilter(field) {
+            currentFilters[field] = [];
+            closeFilterMenu();
+            applyFiltersAndSort();
+        }
+
+        function toggleSelectAll(dom) {
+            document.querySelectorAll(".filter-check").forEach(cb => cb.checked = dom.checked);
+            let f = document.querySelector(".filter-menu-header span").innerText.replace("筛选:", "");
+            applyFilterCheck(getFieldByText(f));
+        }
+
+        function invertSelection() {
+            document.querySelectorAll(".filter-check").forEach(cb => cb.checked = !cb.checked);
+            let f = document.querySelector(".filter-menu-header span").innerText.replace("筛选:", "");
+            applyFilterCheck(getFieldByText(f));
+        }
+
+        function applyFilterCheck(field) {
+            let arr = Array.from(document.querySelectorAll(".filter-check:checked")).map(cb => cb.value);
+            currentFilters[field] = arr;
+            applyFiltersAndSort();
+        }
+
+        function closeFilterMenu() {
+            document.getElementById("filterMenuContainer").innerHTML = "";
+        }
+
+        function getFieldByText(text) {
+            const map = {
+                "序号": "seq", "类别": "category", "系部": "dept", "年级": "grade",
+                "办学形式": "studyForm", "专业": "major", "科目": "course", "开设节数": "openPeriods",
+                "专业组": "majorGroup", "总节数": "totalPeriods", "任课教师": "teacher",
+                "1": "c1", "2": "c2", "3": "c3", "4": "c4", "5": "c5", "6": "c6", "7": "c7"
+            };
+            return map[text] || text;
+        }
+
+        document.addEventListener("click", e => {
+            if (!e.target.closest(".filter-menu, .filter-btn")) closeFilterMenu();
+        });
+
+        function sortData(field, dir) {
+            currentSort.field = field;
+            currentSort.direction = dir;
+            applyFiltersAndSort();
+        }
+
+        function clearSort() {
+            currentSort = { field: null, direction: null };
+            applyFiltersAndSort();
+        }
+
+        function applyFiltersAndSort() {
+            let data = [...fullData];
+            let keys = Object.keys(currentFilters).filter(k => currentFilters[k]?.length > 0);
+
+            if (keys.length > 0) {
+                data = data.filter(row => {
+                    return keys.every(k => {
+                        const val = String(getCellValue(row, k));
+                        return currentFilters[k].includes(val);
+                    });
+                });
+            }
+
+            if (currentSort.field) {
+                data.sort((a, b) => {
+                    let x = getCellValue(a, currentSort.field);
+                    let y = getCellValue(b, currentSort.field);
+                    if (!isNaN(Number(x)) && !isNaN(Number(y))) { x = +x; y = +y; }
+                    if (x < y) return currentSort.direction === "asc" ? -1 : 1;
+                    if (x > y) return currentSort.direction === "asc" ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            renderFilteredTable(data);
+        }
+
+        function renderFilteredTable(filteredData) {
+            let html = "";
+            let sum = 0;
+            let realSeq = 1;
+            filteredData.forEach((item, idx) => {
+                const c = item.classes || [];
+                while (c.length < 7) c.push("");
+                sum += item.totalPeriods || 0;
+
+                let cateBg = "#ffffff";
+                const cate = (item.category || "").trim().toLowerCase();
+                if (cate === "常规") cateBg = "#e3f2fd";
+                else if (cate === "就业班") cateBg = "#ffe0b2";
+                else if (cate === "未分班") cateBg = "#fce4ec";
+                else if (cate === "新生班") cateBg = "#e8f5e8";
+
+                let deptBg = "#ffffff";
+                const deptTxt = (item.dept || "").trim();
+                if (deptTxt.includes("高考部")) deptBg = "#e6f7ff";
+                else if (deptTxt.includes("学前教育部")) deptBg = "#fef0f8";
+                else if (deptTxt.includes("信息技术部")) deptBg = "#edf7ff";
+                else if (deptTxt.includes("现代服务部")) deptBg = "#fcffe6";
+                else if (deptTxt.includes("财经商贸部")) deptBg = "#fff4e5";
+                else if (deptTxt.includes("医药卫生部")) deptBg = "#f0f8ff";
+
+                let gradeBg = "#ffffff";
+                const grade = (item.grade || "").trim();
+                if (grade.includes("2023")) gradeBg = "#fce4ec";
+                else if (grade.includes("2024")) gradeBg = "#e8f5e8";
+                else if (grade.includes("2025")) gradeBg = "#fff8e1";
+
+                let studyBg = "#ffffff";
+                const study = (item.studyForm || "").trim();
+                if (study.includes("中职")) studyBg = "#e3f2fd";
+                else if (study.includes("三二分段")) studyBg = "#f3e5f5";
+                else if (study.includes("三四分段")) studyBg = "#ffe0b2";
+
+                html += `<tr>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'seq',this.innerText)">${realSeq++}</td>
+            <td style="background-color:${cateBg} !important; font-weight:500;" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'category',this.innerText)">${item.category}</td>
+            <td style="background-color:${deptBg} !important" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'dept',this.innerText)">${item.dept}</td>
+            <td style="background-color:${gradeBg} !important" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'grade',this.innerText)">${item.grade}</td>
+            <td style="background-color:${studyBg} !important" ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'studyForm',this.innerText)">${item.studyForm}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'major',this.innerText)">${item.major}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'course',this.innerText)">${item.course}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'openPeriods',this.innerText)">${item.openPeriods}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'majorGroup',this.innerText)">${item.majorGroup}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c1',this.innerText)">${c[0]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c2',this.innerText)">${c[1]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c3',this.innerText)">${c[2]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c4',this.innerText)">${c[3]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c5',this.innerText)">${c[4]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c6',this.innerText)">${c[5]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'c7',this.innerText)">${c[6]}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'totalPeriods',this.innerText)">${item.totalPeriods}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'teacher',this.innerText)">${item.teacher}</td>
+            <td ondblclick="this.contentEditable=true;this.onblur=()=>editCell(${idx},'remark',this.innerText)">${item.remark || ""}</td>
+            <td class="del-btn-col"><button class="btn btn-sm btn-danger" onclick="deleteSingleRow(${idx})">删除</button></td>
+        </tr>`;
+            });
+            html += `<tr class="summary-row">
+        <td colspan="16" style="text-align:right;">合计总节数：</td>
+        <td id="totalSum">${sum}</td>
+        <td class="del-btn-col"></td>
+    </tr>`;
+            document.getElementById("tbBody").innerHTML = html;
+        }
+
+        function resetAllFilters() {
+            currentFilters = {};
+            currentSort = { field: null, direction: null };
+            renderHtml();
+        }
+
+        async function saveAllToCloud() {
+            if (!hasPermission("minister")) return;
+            try {
+                await SB.from("teaching_schedule").delete().neq("id", -1);
+                const rows = document.querySelectorAll("#tbBody tr:not(.summary-row)");
+                const data = [];
+                rows.forEach((r) => {
+                    const t = r.querySelectorAll("td");
+                    data.push({
+                        类别: t[1].innerText.trim(),
+                        系部: t[2].innerText.trim(),
+                        年级: t[3].innerText.trim(),
+                        办学形式: t[4].innerText.trim(),
+                        专业: t[5].innerText.trim(),
+                        科目: t[6].innerText.trim(),
+                        开设节数: parseInt(t[7].innerText) || 0,
+                        专业组: t[8].innerText.trim(),
+                        班级1: t[9].innerText.trim(),
+                        班级2: t[10].innerText.trim(),
+                        班级3: t[11].innerText.trim(),
+                        班级4: t[12].innerText.trim(),
+                        班级5: t[13].innerText.trim(),
+                        班级6: t[14].innerText.trim(),
+                        班级7: t[15].innerText.trim(),
+                        节数: parseInt(t[16].innerText) || 0,
+                        任课教师: t[17].innerText.trim(),
+                        备注: t[18].innerText.trim()
+                    });
+                });
+                const { error } = await SB.from("teaching_schedule").insert(data);
+                if (error) throw error;
+                alert("✅ 保存成功，自动刷新最新数据");
+                loadSavedData();
+            } catch (err) {
+                alert("❌ 保存失败：" + err.message);
+            }
+        }
+
+        async function loadSavedData() {
+            try {
+                fullData = [];
+                currentFilters = {};
+                currentSort = { field: null, direction: null };
+                document.getElementById("tbBody").innerHTML = "";
+
+                // 🔥 无限读取已保存的授课表
+                const data = await fetchAllData("teaching_schedule");
+
+                if (!data || data.length === 0) return;
+
+                fullData = data.map((row, idx) => ({
+                    seq: idx + 1,
+                    category: row.类别,
+                    dept: row.系部,
+                    grade: row.年级,
+                    studyForm: row.办学形式,
+                    major: row.专业,
+                    course: row.科目,
+                    openPeriods: row.开设节数,
+                    majorGroup: row.专业组,
+                    teacher: row.任课教师,
+                    totalPeriods: row.节数,
+                    remark: row.备注,
+                    classes: [row.班级1, row.班级2, row.班级3, row.班级4, row.班级5, row.班级6, row.班级7]
+                }));
+
+                renderHtml();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function exportExcel() {
+            let wb = XLSX.utils.table_to_book(document.getElementById("mainTab"), { sheet: "授课安排表" });
+            XLSX.writeFile(wb, "授课安排表.xlsx");
+        }
+
+        function logout() {
+            localStorage.clear();
+            location.href = "login.html";
+        }
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.onclick = (e) => openFilterMenu(e, btn.dataset.field);
+        });
+    </script>
+</body>
+
+</html>
