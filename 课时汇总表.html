@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>课时汇总表</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap/5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        html,
+        body {
+            width: 98%;
+            margin: 0 auto;
+            padding: 10px 0;
+            background: #f9f9f9;
+            font-size: 14px;
+        }
+
+        .container-fluid {
+            max-width: 98% !important;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            font-size: 13px;
+            border: 1px solid #333 !important;
+        }
+
+        th,
+        td {
+            border: 1px solid #333 !important;
+            padding: 6px;
+            text-align: center;
+            vertical-align: middle;
+            word-wrap: break-word;
+        }
+
+        th {
+            background: #f5f5f5 !important;
+            font-weight: bold;
+            position: relative;
+            user-select: none;
+        }
+
+        .filter-btn {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            cursor: pointer;
+            font-size: 10px;
+            opacity: 0.7;
+            z-index: 10;
+        }
+
+        .filter-btn:hover {
+            opacity: 1;
+        }
+
+        .filter-menu {
+            position: absolute;
+            background: #fff;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px #0002;
+            z-index: 9999;
+            padding: 10px;
+            border-radius: 4px;
+            min-width: 180px;
+            display: none;
+            text-align: left;
+        }
+
+        .filter-menu.show {
+            display: block;
+        }
+
+        .filter-menu-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .filter-menu-actions {
+            margin-bottom: 5px;
+        }
+
+        .filter-search-box {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            box-sizing: border-box;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .filter-menu-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border-top: 1px solid #eee;
+        }
+
+        .filter-item {
+            padding: 4px 0;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .btn-sm-action {
+            font-size: 12px;
+            padding: 2px 8px;
+        }
+
+        input#fileImport {
+            display: none;
+        }
+
+        /* 总计行样式 */
+        .total-row {
+            background-color: #fff3cd !important;
+            font-weight: bold !important;
+            color: #000 !important;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+
+            #print-area,
+            #print-area * {
+                visibility: visible;
+            }
+
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+
+            button,
+            .filter-menu,
+            .filter-btn,
+            .import-btn {
+                display: none !important;
+            }
+
+            .table {
+                font-size: 11px;
+            }
+        }
+
+        .btn {
+            font-size: 18px;
+        }
+
+        .btn-danger {
+            font-size: 14px;
+
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>课时汇总表（最终版）</h4>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="location.href='课程安排表.html'">课程安排表</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="location.href='授课安排表.html'">授课安排表</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="location.href='教师管理表.html'">教师管理表</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="location.href='任课分布表.html'">任课分布表</button>
+                <button class="btn btn-sm btn-success me-1" onclick="window.print()">🖨️ 打印</button>
+                <button class="btn btn-sm btn-warning" onclick="exportExcel()">📤 导出Excel</button>
+                <label class="btn btn-sm btn-info import-btn mb-0">📥 导入Excel
+                    <input type="file" id="fileImport" accept=".xlsx,.xls" onchange="importExcel(this)">
+                </label>
+            </div>
+        </div>
+        <div class="mb-3">
+            <button class="btn btn-sm btn-info me-1" onclick="loadSourceData()">☁️ 加载源数据</button>
+            <button class="btn btn-sm btn-success me-1" onclick="buildSummary()">📋 自动生成汇总</button>
+            <button class="btn btn-sm btn-warning me-1" onclick="saveToCloud()">💾 保存独立表</button>
+            <button class="btn btn-sm btn-dark me-1" onclick="loadCloudData()">📥 读取独立表</button>
+            <button class="btn btn-sm btn-secondary me-1" onclick="addEmptyRow()">➕ 新增行</button>
+            <button class="btn btn-sm btn-secondary me-1" onclick="addNewColumn()">➕ 新增列</button>
+            <button class="btn btn-sm btn-secondary" onclick="resetAllFilters()">🔄重置筛选</button>
+            <button class="btn btn-sm btn-secondary" onclick="logout()">🚪 退出登录</button>
+        </div>
+
+        <div id="print-area">
+            <h3 class="text-center mb-3" contenteditable="true">海丰县中等职业技术学校 课时汇总表</h3>
+            <div class="table-responsive">
+                <table id="mainTab" class="table table-bordered">
+                    <thead id="tableHead">
+                        <tr>
+                            <th>序号<span class="filter-btn" data-field="seq">🔍</span></th>
+                            <th>姓名<span class="filter-btn" data-field="name">🔍</span></th>
+                            <th>总节数<span class="filter-btn" data-field="totalPeriod">🔍</span></th>
+                            <th>可承担课时<span class="filter-btn" data-field="bearPeriod">🔍</span></th>
+                            <th>所属系部<span class="filter-btn" data-field="dept">🔍</span></th>
+                            <th>是否在编<span class="filter-btn" data-field="inEdit">🔍</span></th>
+                            <th>任教专业/学科<span class="filter-btn" data-field="subject">🔍</span></th>
+                            <th>任教专业-课程<span class="filter-btn" data-field="courseInfo">🔍</span></th>
+                            <th>课时差<span class="filter-btn" data-field="diffPeriod">🔍</span></th>
+                            <th>班主任<span class="filter-btn" data-field="isHead">🔍</span></th>
+                            <th>年级<span class="filter-btn" data-field="grade">🔍</span></th>
+                            <th>班会课<span class="filter-btn" data-field="classHour">🔍</span></th>
+                            <th>所带班级<span class="filter-btn" data-field="headClass">🔍</span></th>
+                            <th>合班授课<span class="filter-btn" data-field="mergeClass">🔍</span></th>
+                            <th>备注<span class="filter-btn" data-field="remark">🔍</span></th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="filterMenuContainer"></div>
+
+    <script>
+        const supabaseUrl = "https://kpwnnqnlmfjzztfwytyw.supabase.co";
+        const supabaseKey = "sb_publishable_-P1Mb1SG2j8twruY5xC8nA_X1FD0--r";
+        const SB = supabase.createClient(supabaseUrl, supabaseKey);
+
+        let teachSchedule = [];
+        let teacherList = [];
+        let courseData = [];
+        let summaryData = [];
+        let currentFilters = {};
+        let currentSort = { field: null, direction: null };
+        let customColumns = [];
+
+        // 🔥 核心：无限读取全量数据，突破1000条限制
+        async function fetchAllRecords(table) {
+            let allData = [];
+            let page = 0;
+            const pageSize = 1000;
+
+            while (true) {
+                // 改用 range 分页，完全避开 gt/lt 条件，不依赖 id 排序
+                const { data, error } = await SB
+                    .from(table)
+                    .select("*")
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+
+                if (error || !data || data.length === 0) break;
+
+                allData = allData.concat(data);
+                page++;
+
+                // 读到的数据少于 1000 条，说明已经读完
+                if (data.length < pageSize) break;
+            }
+
+            return allData;
+        }
+
+        // 静默自动加载（无弹窗，页面初始化用）
+        async function autoLoadAndBuild() {
+            try {
+                console.log("🔄 课时汇总表自动加载源数据中...");
+                // 全量读取数据
+                teachSchedule = await fetchAllRecords("teaching_schedule") || [];
+                teacherList = await fetchAllRecords("teacher_management") || [];
+                courseData = await fetchAllRecords("timetable_data") || [];
+
+                console.log("✅ 自动加载完成，生成汇总表");
+                buildSummary(); // 自动生成汇总
+            } catch (err) {
+                console.error("❌ 自动加载失败：", err);
+                alert("自动加载数据失败，可手动点击「加载源数据」");
+            }
+        }
+
+        // 手动加载源数据（保留弹窗提示）
+        async function loadSourceData() {
+            try {
+                alert("开始加载源数据...");
+
+                // 🔥 全部使用全量读取，无1000条限制
+                const d1 = await fetchAllRecords("teaching_schedule");
+                const d2 = await fetchAllRecords("teacher_management");
+                const d3 = await fetchAllRecords("timetable_data");
+
+                teachSchedule = d1 || [];
+                teacherList = d2 || [];
+                courseData = d3 || [];
+
+                console.log("授课表:", teachSchedule.length);
+                console.log("教师表:", teacherList.length);
+                console.log("课表数据:", courseData.length);
+
+                alert(`✅ 源数据加载成功！
+授课表：${teachSchedule.length} 条
+教师表：${teacherList.length} 条
+课表数据：${courseData.length} 条`);
+            } catch (err) {
+                alert("❌ 加载失败：" + err.message);
+            }
+        }
+
+        // 汇总生成
+        function buildSummary() {
+            if (teachSchedule.length === 0) {
+                alert("请先【加载源数据】");
+                return;
+            }
+
+            // 1. 先统计有课教师
+            let nameMap = new Map();
+            teachSchedule.forEach(row => {
+                if ((row.科目 || "").includes("课时汇总")) return;
+                if ((row.备注 || "").trim() === "校外兼职") return;
+
+                let names = (row.任课教师 || "").split(/[，、]/).map(s => s.trim()).filter(s => s);
+                names.forEach(nm => {
+                    if (!nameMap.has(nm)) nameMap.set(nm, []);
+                    nameMap.get(nm).push(row);
+                });
+            });
+
+            // 班主任信息
+            let headTeacherMap = new Map();
+            courseData.forEach(item => {
+                const cName = (item.course_name || "").trim();
+                const tName = (item.teacher_name || "").trim();
+                const clsName = (item.class_name || "").trim();
+                if (!tName || !clsName) return;
+                if (cName.includes("健康教育") || cName.includes("安全教育") || cName.includes("主题班会") || cName.includes("班会")) {
+                    if (!headTeacherMap.has(tName)) {
+                        headTeacherMap.set(tName, {
+                            className: clsName,
+                            grade: clsName.match(/2[3-8]/) ? "20" + clsName.match(/2[3-8]/)[0] : ""
+                        });
+                    }
+                }
+            });
+
+            let res = [];
+
+            // 遍历所有教师
+            teacherList.forEach(tInfo => {
+                const name = tInfo.姓名?.trim();
+                if (!name) return;
+
+                const ownCourseList = nameMap.get(name) || [];
+                const total = ownCourseList.reduce((sum, item) => sum + (Number(item.节数) || 0), 0);
+                const bear = Number(tInfo.可承担课时) || 0;
+                // 🔥 已修改：课时差 = 总节数 - 可承担课时
+                const diff = total - bear;
+
+                let courseArr = [];
+                ownCourseList.forEach(c => {
+                    if (c.年级 && c.专业 && c.科目 && c.节数) {
+                        courseArr.push(`${c.年级}${c.专业}-${c.科目}（${c.节数}节）`);
+                    }
+                });
+                let courseStr = courseArr.join("、");
+
+                let isHeadStr = "";
+                let headGrade = "";
+                let headClassName = "";
+                let classHour = 0;
+
+                if (headTeacherMap.has(name)) {
+                    isHeadStr = "班主任";
+                    classHour = 2;
+                    let headInfo = headTeacherMap.get(name);
+                    headClassName = headInfo.className;
+                    headGrade = headInfo.grade;
+                }
+
+                let mergeTotal = 0;
+                let mergeCourse = courseData.filter(c => c.teacher_name === name && c.class_name.includes("合班"));
+                mergeCourse.forEach(() => mergeTotal += 2);
+                let mergeStr = mergeTotal > 0 ? mergeTotal + "节" : "";
+
+                let rowData = {
+                    seq: 0,
+                    name: name,
+                    totalPeriod: total,
+                    bearPeriod: bear,
+                    dept: tInfo.所属系部 || "",
+                    inEdit: tInfo.是否在编 || "",
+                    subject: tInfo.科组 || "",
+                    courseInfo: courseStr,
+                    diffPeriod: diff,
+                    isHead: isHeadStr,
+                    grade: headGrade,
+                    classHour: classHour,
+                    headClass: headClassName,
+                    mergeClass: mergeStr,
+                    remark: ""
+                };
+                customColumns.forEach(col => {
+                    rowData[col.key] = "";
+                });
+                res.push(rowData);
+            });
+
+            // 排序：有系部在前按系部+姓名升序，空系部全部放最后
+            res.sort((a, b) => {
+                let deptA = (a.dept || "").trim();
+                let deptB = (b.dept || "").trim();
+
+                let emptyA = deptA === "";
+                let emptyB = deptB === "";
+                if (emptyA && !emptyB) return 1;
+                if (!emptyA && emptyB) return -1;
+
+                if (deptA !== deptB) {
+                    return deptA.localeCompare(deptB, 'zh-CN');
+                }
+
+                let nameA = (a.name || "").trim();
+                let nameB = (b.name || "").trim();
+                return nameA.localeCompare(nameB, 'zh-CN');
+            });
+
+            summaryData = res;
+            resetSeq();
+            renderTable();
+        }
+
+        function addNewColumn() {
+            const colName = prompt("请输入新列的名称：");
+            if (!colName) return;
+            const colKey = "custom_" + Date.now();
+            customColumns.push({ name: colName, key: colKey });
+            summaryData.forEach(row => {
+                row[colKey] = "";
+            });
+            updateTableHead();
+            renderTable();
+            alert(`✅ 已新增列：${colName}`);
+        }
+
+        function updateTableHead() {
+            const thead = document.getElementById("tableHead");
+            let html = `
+        <tr>
+            <th>序号<span class="filter-btn" data-field="seq">🔍</span></th>
+            <th>姓名<span class="filter-btn" data-field="name">🔍</span></th>
+            <th>总节数<span class="filter-btn" data-field="totalPeriod">🔍</span></th>
+            <th>可承担课时<span class="filter-btn" data-field="bearPeriod">🔍</span></th>
+            <th>所属系部<span class="filter-btn" data-field="dept">🔍</span></th>
+            <th>是否在编<span class="filter-btn" data-field="inEdit">🔍</span></th>
+            <th>任教专业/学科<span class="filter-btn" data-field="subject">🔍</span></th>
+            <th>任教专业-课程<span class="filter-btn" data-field="courseInfo">🔍</span></th>
+            <th>课时差<span class="filter-btn" data-field="diffPeriod">🔍</span></th>
+            <th>班主任<span class="filter-btn" data-field="isHead">🔍</span></th>
+            <th>年级<span class="filter-btn" data-field="grade">🔍</span></th>
+            <th>班会课<span class="filter-btn" data-field="classHour">🔍</span></th>
+            <th>所带班级<span class="filter-btn" data-field="headClass">🔍</span></th>
+            <th>合班授课<span class="filter-btn" data-field="mergeClass">🔍</span></th>
+            <th>备注<span class="filter-btn" data-field="remark">🔍</span></th>
+    `;
+            customColumns.forEach(col => {
+                html += `<th>${col.name}<span class="filter-btn" data-field="${col.key}">🔍</span></th>`;
+            });
+            html += `<th>操作</th></tr>`;
+            thead.innerHTML = html;
+            bindFilterBtnEvent();
+        }
+
+        function resetSeq() {
+            summaryData.forEach((item, idx) => item.seq = idx + 1);
+        }
+
+        // 渲染：带底部总计行
+        function renderTable() {
+            let totalPeriodSum = 0;
+            summaryData.forEach(item => {
+                totalPeriodSum += Number(item.totalPeriod) || 0;
+            });
+
+            let html = "";
+            summaryData.forEach(row => {
+                html += `<tr>
+            <td>${row.seq}</td>
+            <td contenteditable="true">${row.name}</td>
+            <td contenteditable="true">${row.totalPeriod}</td>
+            <td contenteditable="true">${row.bearPeriod}</td>
+            <td contenteditable="true">${row.dept}</td>
+            <td contenteditable="true">${row.inEdit}</td>
+            <td contenteditable="true">${row.subject}</td>
+            <td contenteditable="true">${row.courseInfo}</td>
+            <td contenteditable="true">${row.diffPeriod}</td>
+            <td contenteditable="true">${row.isHead}</td>
+            <td contenteditable="true">${row.grade}</td>
+            <td contenteditable="true">${row.classHour}</td>
+            <td contenteditable="true">${row.headClass}</td>
+            <td contenteditable="true">${row.mergeClass}</td>
+            <td contenteditable="true">${row.remark}</td>
+        `;
+                customColumns.forEach(col => {
+                    html += `<td contenteditable="true">${row[col.key] || ""}</td>`;
+                });
+                html += `<td><button class="btn btn-sm btn-danger" onclick="delRow(${row.seq - 1})">删除</button></td></tr>`;
+            });
+
+            // 添加总计行
+            const colCount = 15 + customColumns.length;
+            html += `
+            <tr class="total-row">
+                <td colspan="2" style="text-align:right">课时总计：</td>
+                <td>${totalPeriodSum}</td>
+                <td colspan="${colCount - 3}"></td>
+                <td></td>
+            </tr>
+            `;
+
+            document.getElementById("tbBody").innerHTML = html;
+            bindCellEditEvent();
+            bindFilterBtnEvent();
+        }
+
+        function bindCellEditEvent() {
+            document.querySelectorAll("td[contenteditable]").forEach(td => {
+                td.onblur = function () {
+                    let idx = this.parentElement.rowIndex - 1;
+                    if (idx >= summaryData.length) return;
+                    let cellIndex = this.cellIndex;
+                    const keys = ["seq", "name", "totalPeriod", "bearPeriod", "dept", "inEdit", "subject", "courseInfo", "diffPeriod", "isHead", "grade", "classHour", "headClass", "mergeClass", "remark"];
+                    customColumns.forEach(col => keys.push(col.key));
+                    summaryData[idx][keys[cellIndex]] = this.innerText.trim();
+                    renderTable();
+                }
+            });
+        }
+
+        function addEmptyRow() {
+            let newRow = { seq: 0, name: "", totalPeriod: 0, bearPeriod: 0, dept: "", inEdit: "", subject: "", courseInfo: "", diffPeriod: 0, isHead: "", grade: "", classHour: "", headClass: "", mergeClass: "", remark: "" };
+            customColumns.forEach(col => {
+                newRow[col.key] = "";
+            });
+            summaryData.push(newRow);
+            resetSeq();
+            renderTable();
+        }
+
+        function delRow(idx) {
+            if (!confirm("确定删除？")) return;
+            summaryData.splice(idx, 1);
+            resetSeq();
+            renderTable();
+        }
+
+        async function saveToCloud() {
+            try {
+                await SB.from("hour_summary").delete().neq("id", 0);
+                const saveData = summaryData.map(row => {
+                    const data = {
+                        seq: parseInt(row.seq) || 0,
+                        name: row.name || "",
+                        totalperiod: parseInt(row.totalPeriod) || 0,
+                        bearperiod: parseInt(row.bearPeriod) || 0,
+                        dept: row.dept || "",
+                        inedit: row.inEdit || "",
+                        subject: row.subject || "",
+                        courseinfo: row.courseInfo || "",
+                        diffperiod: parseInt(row.diffPeriod) || 0,
+                        ishead: row.isHead || "",
+                        grade: row.grade || "",
+                        classhour: parseInt(row.classHour) || 0,
+                        headclass: row.headClass || "",
+                        mergeclass: row.mergeClass || "",
+                        remark: row.remark || ""
+                    };
+                    customColumns.forEach(col => {
+                        data[col.key] = row[col.key] || "";
+                    });
+                    return data;
+                });
+                const { error } = await SB.from("hour_summary").insert(saveData);
+                if (error) throw error;
+                alert("✅ 已成功保存到独立课时汇总表");
+            } catch (err) {
+                alert("❌ 保存失败：" + err.message);
+            }
+        }
+
+        async function loadCloudData() {
+            const data = await fetchAllRecords("hour_summary");
+            if (!data) {
+                summaryData = [];
+                renderTable();
+                return;
+            }
+            summaryData = data.map(row => {
+                const mapped = {
+                    seq: parseInt(row.seq) || 0,
+                    name: row.name || "",
+                    totalPeriod: parseInt(row.totalperiod) || 0,
+                    bearPeriod: parseInt(row.bearperiod) || 0,
+                    dept: row.dept || "",
+                    inEdit: row.inedit || "",
+                    subject: row.subject || "",
+                    courseInfo: row.courseinfo || "",
+                    diffPeriod: parseInt(row.diffperiod) || 0,
+                    isHead: row.ishead || "",
+                    grade: row.grade || "",
+                    classHour: parseInt(row.classhour) || 0,
+                    headClass: row.headclass || "",
+                    mergeClass: row.mergeclass || "",
+                    remark: row.remark || ""
+                };
+                customColumns.forEach(col => {
+                    mapped[col.key] = row[col.key] || "";
+                });
+                return mapped;
+            });
+            renderTable();
+        }
+
+        function exportExcel() {
+            let wb = XLSX.utils.table_to_book(document.getElementById("mainTab"), { sheet: "课时汇总表" });
+            XLSX.writeFile(wb, "课时汇总表.xlsx");
+        }
+
+        function importExcel(file) {
+            let f = file.files[0];
+            if (!f) return;
+            let reader = new FileReader();
+            reader.readAsArrayBuffer(f);
+            reader.onload = function (e) {
+                let data = new Uint8Array(e.target.result);
+                let workbook = XLSX.read(data, { type: "array" });
+                let sheet = workbook.Sheets[workbook.SheetNames[0]];
+                let json = XLSX.utils.sheet_to_json(sheet);
+                let importArr = [];
+                json.forEach((item, idx) => {
+                    let newRow = {
+                        seq: idx + 1,
+                        name: item.姓名 || "",
+                        totalPeriod: Number(item.总节数) || 0,
+                        bearPeriod: Number(item.可承担课时) || 0,
+                        dept: item.所属系部 || "",
+                        inEdit: item.是否在编 || "",
+                        subject: item["任教专业/学科"] || "",
+                        courseInfo: item["任教专业-课程"] || "",
+                        diffPeriod: Number(item.课时差) || 0,
+                        isHead: item.班主任 || "",
+                        grade: item.年级 || "",
+                        classHour: Number(item.班会课) || 0,
+                        headClass: item.所带班级 || "",
+                        mergeClass: item.合班授课 || "",
+                        remark: item.备注 || ""
+                    };
+                    customColumns.forEach(col => {
+                        newRow[col.key] = item[col.name] || "";
+                    });
+                    importArr.push(newRow);
+                });
+                summaryData = importArr;
+                resetSeq();
+                renderTable();
+                alert("✅ Excel导入成功");
+                file.value = "";
+            }
+        }
+
+        function bindFilterBtnEvent() {
+            document.querySelectorAll(".filter-btn").forEach(btn => {
+                btn.onclick = (e) => openFilterMenu(e, btn.dataset.field);
+            });
+        }
+        function getFieldValue(row, field) { return row[field] ?? ""; }
+        function openFilterMenu(e, field) {
+            e.stopPropagation(); closeFilterMenu();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const wrap = document.getElementById("filterMenuContainer");
+            const allVal = [...new Set(summaryData.map(x => getFieldValue(x, field)).filter(v => v))].sort();
+            let html = `<div class="filter-menu show" style="top:${rect.bottom + window.scrollY}px;left:${rect.left + window.scrollX}px">
+        <div class="filter-menu-header"><span>筛选</span><button class="btn-close" onclick="closeFilterMenu()"></button></div>
+        <div class="filter-menu-actions">
+            <button class="btn btn-sm btn-light btn-sm-action" onclick="sortTable('${field}','asc')">升序</button>
+            <button class="btn btn-sm btn-light btn-sm-action" onclick="sortTable('${field}','desc')">降序</button>
+            <button class="btn btn-sm btn-secondary btn-sm-action" onclick="clearSort()">清除排序</button>
+        </div>
+        <input class="filter-search-box" placeholder="搜索" oninput="filterSearch(this)">
+        <div class="filter-menu-list">`;
+            allVal.forEach(v => {
+                html += `<div class="filter-item" onclick="filterByValue('${field}','${v}')">${v}</div>`;
+            });
+            html += `</div><button class="btn btn-sm btn-outline-danger w-100 mt-2" onclick="singleFilterReset('${field}')">重置本列</button></div>`;
+            wrap.innerHTML = html;
+        }
+        function closeFilterMenu() { document.getElementById("filterMenuContainer").innerHTML = ""; }
+        function filterSearch(inp) {
+            let k = inp.value.toLowerCase();
+            document.querySelectorAll(".filter-item").forEach(el => el.style.display = el.innerText.toLowerCase().includes(k) ? "block" : "none");
+        }
+        function filterByValue(field, value) {
+            currentFilters[field] = [value];
+            filterAndSortRender();
+            closeFilterMenu();
+        }
+        function singleFilterReset(field) { delete currentFilters[field]; filterAndSortRender(); closeFilterMenu(); }
+        function sortTable(field, dir) { currentSort = { field, direction: dir }; filterAndSortRender(); closeFilterMenu(); }
+        function clearSort() { currentSort = { field: null, direction: null }; filterAndSortRender(); }
+        function filterAndSortRender() {
+            let data = [...summaryData];
+            Object.keys(currentFilters).forEach(k => {
+                if (currentFilters[k]?.length) data = data.filter(r => currentFilters[k].includes(getFieldValue(r, k)));
+            });
+            if (currentSort.field) {
+                data.sort((a, b) => {
+                    let x = getFieldValue(a, currentSort.field), y = getFieldValue(b, currentSort.field);
+                    if (!isNaN(+x) && !isNaN(+y)) { x = +x; y = +y; }
+                    return currentSort.direction === "asc" ? x > y ? 1 : -1 : x < y ? 1 : -1;
+                });
+            }
+            data.forEach((d, i) => d.seq = i + 1);
+            summaryData = data;
+            renderTable();
+        }
+        function resetAllFilters() {
+            currentFilters = {};
+            currentSort = { field: null };
+            buildSummary();
+        }
+        function logout() { localStorage.clear(); location.href = 'login.html'; }
+        document.addEventListener("click", e => { if (!e.target.closest(".filter-menu,.filter-btn")) closeFilterMenu(); });
+
+        // 🔥 页面加载完成后，自动执行静默加载+生成汇总
+        document.addEventListener('DOMContentLoaded', autoLoadAndBuild);
+    </script>
+</body>
+
+</html>
