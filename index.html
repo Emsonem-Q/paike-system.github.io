@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>6系部排课系统</title>
+    <title>5系部排课系统</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -119,7 +119,7 @@
 <body>
     <div class="container-fluid">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>6系部排课系统</h4>
+            <h4>5系部排课系统</h4>
             <div>
                 <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
                     onclick="location.href='授课安排表.html'">授课安排表</button>
@@ -211,13 +211,13 @@
             ["1-2", "3-4", "5-6"],
             ["1-2", "3-4", "5-6"]
         ];
+        // ========== 仅此处修改为5个系部，其余代码不动 ==========
         const DEPTS = {
             dept1: { name: "高考部" },
-            dept2: { name: "学前教育部" },
-            dept3: { name: "信息技术部" },
-            dept4: { name: "现代服务部" },
-            dept5: { name: "财经商贸部" },
-            dept6: { name: "医药卫生部" }
+            dept2: { name: "艺教设计部" },
+            dept3: { name: "信息商贸部" },
+            dept4: { name: "智造服务部" },
+            dept5: { name: "医药卫生部" }
         };
 
         const gradeColorMap = {
@@ -274,32 +274,37 @@
 
         function logout() { localStorage.clear(); location.href = "login.html"; }
 
-        // 加载数据：同步读取云端修改标记
-        async function loadAllData() {
-            for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
-            const { data: rows, error } = await supabaseClient.from("timetable_data").select("*");
-            if (error) {
-                console.error("加载失败:", error);
-                return;
-            }
-            const classOrder = {};
-            for (let d in DEPTS) classOrder[d] = [];
-            modifiedKeys.clear();
-            rows.forEach(r => {
-                const did = r.dept_id, cname = standardizeClassName(r.class_name);
-                if (!did || !cname) return;
-                if (!classOrder[did].includes(cname)) classOrder[did].push(cname);
-                const key = `${cname}-${r.day}-${r.period}`;
-                data[did].courses[key] = { c: r.course_name ?? "", t: r.teacher_name ?? "" };
-                if (r.remarks) data[did].remarks = r.remarks;
-                // 读取云端修改标记存入集合
-                if (Array.isArray(r.modified_key)) {
-                    r.modified_key.forEach(k => modifiedKeys.add(k));
-                }
-            });
-            for (let d in DEPTS) data[d].classes = sortClassesByGrade(classOrder[d]);
+      // 加载数据：同步读取云端修改标记
+async function loadAllData() {
+    // 初始化所有合法系部数据
+    for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
+    // classOrder 只初始化系统定义的5个系部，杜绝undefined
+    const classOrder = {};
+    for (let d in DEPTS) classOrder[d] = [];
+    
+    const { data: rows, error } = await supabaseClient.from("timetable_data").select("*");
+    if (error) {
+        console.error("加载失败:", error);
+        return;
+    }
+    modifiedKeys.clear();
+    rows.forEach(r => {
+        const did = r.dept_id, cname = standardizeClassName(r.class_name);
+        // 关键修复：过滤不存在的系部ID，跳过脏数据
+        if (!did || !cname || !DEPTS.hasOwnProperty(did)) return;
+        
+        // 现在 classOrder[did] 一定是数组，不会undefined
+        if (!classOrder[did].includes(cname)) classOrder[did].push(cname);
+        const key = `${cname}-${r.day}-${r.period}`;
+        data[did].courses[key] = { c: r.course_name ?? "", t: r.teacher_name ?? "" };
+        if (r.remarks) data[did].remarks = r.remarks;
+        // 读取云端修改标记存入集合
+        if (Array.isArray(r.modified_key)) {
+            r.modified_key.forEach(k => modifiedKeys.add(k));
         }
-
+    });
+    for (let d in DEPTS) data[d].classes = sortClassesByGrade(classOrder[d]);
+}
         // 保存到云：课表+修改标记一起入库
         async function saveToCloud() {
             syncDragOrderToData();
@@ -307,7 +312,7 @@
             // 清空全表
             const { error: deleteError } = await supabaseClient.from("timetable_data").delete().not("id", "is", null);
             if (deleteError) {
-                console.error("清空失败:", deleteError);
+                console.error("清空旧数据失败:", deleteError);
                 alert("❌ 清空旧数据失败");
                 return;
             }
@@ -509,12 +514,12 @@
                         let cur = null;
                         j.forEach((row, idx) => {
                             let t = row?.join("")?.replace(/\s/g, "") || "";
+                            // 匹配新5个系部名称
                             if (t.includes("高考部")) cur = "dept1";
-                            else if (t.includes("学前教育部")) cur = "dept2";
-                            else if (t.includes("信息技术部")) cur = "dept3";
-                            else if (t.includes("现代服务部")) cur = "dept4";
-                            else if (t.includes("财经商贸部")) cur = "dept5";
-                            else if (t.includes("医药卫生部")) cur = "dept6";
+                            else if (t.includes("艺教设计部")) cur = "dept2";
+                            else if (t.includes("信息商贸部")) cur = "dept3";
+                            else if (t.includes("智造服务部")) cur = "dept4";
+                            else if (t.includes("医药卫生部")) cur = "dept5";
                             if (!cur) return;
                             let fc = standardizeClassName(String(row[0] || "").trim());
                             if (!fc || !fc.includes("班") || /备注|节次/.test(fc)) return;
@@ -630,7 +635,7 @@
             ws['!cols'] = Array(17).fill({ wch: 13 });
 
             XLSX.utils.book_append_sheet(wb, ws, "全校课表");
-            XLSX.writeFile(wb, "6系部课表_带底色.xlsx", { bookSST: false });
+            XLSX.writeFile(wb, "5系部课表_带底色.xlsx", { bookSST: false });
             alert("✅ 导出成功");
         }
 
