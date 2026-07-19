@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 
@@ -6,7 +5,7 @@
     <meta charset="UTF-8" />
     <title>5系部排课系统</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style/dist/xlsx.bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.4/dist/umd/supabase.min.js"></script>
     <style>
@@ -114,30 +113,50 @@
         .drag-highlight {
             border-top: 3px solid #007bff !important;
         }
+        /* 备注输入框配套小号按钮，文字与输入框字号统一 */
+.remark-row .btn-sm {
+    font-size: 13px !important;
+    padding: 0.15rem 0.4rem !important;
+    line-height: 1.2;
+}
+.form-control-sm {
+    font-size: 13px;
+}
+.sticky-actions {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #f9f9f9;
+    padding: 8px 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
     </style>
 </head>
 
 <body>
     <div class="container-fluid">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>5系部排课系统</h4>
-            <div>
-                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
-                    onclick="location.href='授课安排表.html'">授课安排表</button>
-                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
-                    onclick="location.href='任课分布表.html'">任课分布表</button>
-                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
-                    onclick="location.href='课时汇总表.html'">课时汇总表</button>
-                <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
-                    onclick="location.href='教师管理表.html'">教师管理表</button>
-                <button class="btn btn-sm btn-secondary ms-2" style="display: none;" onclick="logout()">退出登录</button>
+        <div class="sticky-actions">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>5系部排课系统</h4>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                        onclick="location.href='授课安排表.html'">授课安排表</button>
+                    <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                        onclick="location.href='任课分布表.html'">任课分布表</button>
+                    <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                        onclick="location.href='课时汇总表.html'">课时汇总表</button>
+                    <button class="btn btn-sm btn-outline-primary me-2" style="display: none;"
+                        onclick="location.href='教师管理表.html'">教师管理表</button>
+                    <button class="btn btn-sm btn-secondary ms-2" style="display: none;" onclick="logout()">退出登录</button>
+                </div>
             </div>
-        </div>
-        <div class="mb-3">
-            <button class="btn btn-sm btn-success me-1" onclick="exportAll()">导出课表</button>
-            <button class="btn btn-sm btn-info me-1" style="display: none;" onclick="importTimetable()">导入课表</button>
-            <button class="btn btn-sm btn-warning me-1" onclick="saveToCloud()">保存修改</button>
-            <button class="btn btn-sm btn-danger" style="display: none;" onclick="clearAll()">清空数据库</button>
+            <div class="mb-3">
+                <button id="btn-save" class="btn btn-sm btn-warning me-1" onclick="saveToCloud()">先保存修改</button>
+
+                <button class="btn btn-sm btn-success me-1" onclick="exportAll()">再导出课表</button>
+                <button class="btn btn-sm btn-info me-1" style="display: none;" onclick="importTimetable()">导入课表</button>
+                <button class="btn btn-sm btn-danger" style="display: none;" onclick="clearAll()">清空数据库</button>
+            </div>
         </div>
         <div id="all-depts"></div>
     </div>
@@ -214,11 +233,11 @@
         ];
         // ========== 仅此处修改为5个系部，其余代码不动 ==========
         const DEPTS = {
-            dept1: { name: "高考部" },
-            dept2: { name: "艺教设计部" },
-            dept3: { name: "信息商贸部" },
-            dept4: { name: "智造服务部" },
-            dept5: { name: "医药卫生部" }
+            dept1: { name: "1、海丰县中等职业技术学校2026-2027学年度第一学期【高考部】课程表" },
+            dept2: { name: "2、海丰县中等职业技术学校2026-2027学年度第一学期【艺教设计部】课程表" },  
+            dept3: { name: "3、海丰县中等职业技术学校2026-2027学年度第一学期【信息商贸部】课程表" },
+            dept4: { name: "4、海丰县中等职业技术学校2026-2027学年度第一学期【智造服务部】课程表" },
+            dept5: { name: "5、海丰县中等职业技术学校2026-2027学年度第一学期【医药卫生部】课程表" }
         };
 
         const gradeColorMap = {
@@ -237,8 +256,57 @@
         };
 
         let data = {};
-        // 全局修改标记，从数据库读取，不再使用localStorage
-        let modifiedKeys = new Set();
+        // 全局修改标记，存储 {key: timestamp}，超过一周自动清除
+        let modifiedKeys = new Map();
+        const MODIFY_EXPIRE_DAYS = 7;
+// ===================== 修复后未完善条目判断函数 =====================
+function isImperfectContent(courseStr, teacherStr) {
+    const c = (courseStr || "").trim();
+    const t = (teacherStr || "").trim();
+
+    // 场景A：课程为空 或者 教师为空（任意缺一个就标记）
+    if (c === "" || t === "") {
+        return true;
+    }
+
+    // 场景B-1：课程含/，分割后任意一侧为空（英语/ 或 /内科护理）
+    if (c.includes("/")) {
+        const cParts = c.split("/").map(s => s.trim());
+        if (cParts[0] === "" || cParts[1] === "") {
+            return true;
+        }
+    }
+
+    // 场景B-2：教师含/或,，分割后任意一侧为空（黄思华/ 、/钮思敏、钮思敏,）
+    const splitSymbols = ["/", ","];
+    for (let sym of splitSymbols) {
+        if (t.includes(sym)) {
+            const tParts = t.split(sym).map(s => s.trim());
+            if (tParts[0] === "" || tParts[1] === "") {
+                return true;
+            }
+        }
+    }
+
+    // 全部规则都不命中，正常完整数据
+    return false;
+}
+// ===================================================================
+        // ===================================================================
+
+        // 新增备注操作全局函数
+        function addNewRemark(deptId) {
+            data[deptId].remarksList.push({ id: null, text: "" });
+            renderDept(deptId);
+        }
+        function updateRemarkText(deptId, idx, text) {
+            data[deptId].remarksList[idx].text = text;
+        }
+        function deleteRemark(deptId, idx) {
+            if (!confirm("确定删除这条备注？")) return;
+            data[deptId].remarksList.splice(idx, 1);
+            renderDept(deptId);
+        }
 
         function standardizeClassName(name) {
             if (!name) return "";
@@ -275,56 +343,72 @@
 
         function logout() { localStorage.clear(); location.href = "login.html"; }
 
-      // 加载数据：同步读取云端修改标记
-async function loadAllData() {
-    // 初始化所有合法系部数据
-    for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
-    // classOrder 只初始化系统定义的5个系部，杜绝undefined
-    const classOrder = {};
-    for (let d in DEPTS) classOrder[d] = [];
-    
-    const { data: rows, error } = await supabaseClient.from("timetable_data").select("*");
-    if (error) {
-        console.error("加载失败:", error);
-        return;
-    }
-    modifiedKeys.clear();
-    rows.forEach(r => {
-        const did = r.dept_id, cname = standardizeClassName(r.class_name);
-        // 关键修复：过滤不存在的系部ID，跳过脏数据
-        if (!did || !cname || !DEPTS.hasOwnProperty(did)) return;
-        
-        // 现在 classOrder[did] 一定是数组，不会undefined
-        if (!classOrder[did].includes(cname)) classOrder[did].push(cname);
-        const key = `${cname}-${r.day}-${r.period}`;
-        data[did].courses[key] = { c: r.course_name ?? "", t: r.teacher_name ?? "" };
-        if (r.remarks) data[did].remarks = r.remarks;
-        // 读取云端修改标记存入集合
-        if (Array.isArray(r.modified_key)) {
-            r.modified_key.forEach(k => modifiedKeys.add(k));
-        }
-    });
-    for (let d in DEPTS) data[d].classes = sortClassesByGrade(classOrder[d]);
-}
-        // 保存到云：课表+修改标记一起入库
-        async function saveToCloud() {
-            syncDragOrderToData();
+        // 加载数据：同步读取云端修改标记 + 多条备注
+        async function loadAllData() {
+            // 数据结构升级：remarks改为remarksList数组存储多条备注
+            for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarksList: [] };
+            const classOrder = {};
+            for (let d in DEPTS) classOrder[d] = [];
 
-            // 清空全表
-            const { error: deleteError } = await supabaseClient.from("timetable_data").delete().not("id", "is", null);
-            if (deleteError) {
-                console.error("清空旧数据失败:", deleteError);
-                alert("❌ 清空旧数据失败");
+            const { data: rows, error } = await supabaseClient.from("timetable_data").select("*");
+            if (error) {
+                console.error("加载失败:", error);
                 return;
             }
+            modifiedKeys.clear();
+            rows.forEach(r => {
+                const did = r.dept_id, cname = standardizeClassName(r.class_name);
+                if (!did || !DEPTS.hasOwnProperty(did)) return;
+
+                // 课表行（存在班级名称）
+                if (cname) {
+                    if (!classOrder[did].includes(cname)) classOrder[did].push(cname);
+                    // 只有当课程或教师有值时才创建课程条目（避免空班级的占位记录产生幽灵条目）
+                    if (r.course_name || r.teacher_name) {
+                        const key = `${cname}-${r.day}-${r.period}`;
+                        data[did].courses[key] = { c: r.course_name ?? "", t: r.teacher_name ?? "" };
+                        if (r.modified_key && Array.isArray(r.modified_key)) {
+                            const expireTime = MODIFY_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
+                            r.modified_key.forEach(item => {
+                                const parts = item.split("|");
+                                const k = parts[0];
+                                const ts = parts.length > 1 ? parseInt(parts[1]) : Date.now();
+                                if (Date.now() - ts < expireTime) {
+                                    modifiedKeys.set(k, ts);
+                                }
+                            });
+                        }
+                    }
+                }
+                // 备注行（无班级、仅remarks内容）
+                if (r.remarks && r.remarks.trim() !== "") {
+                    data[did].remarksList.push({
+                        id: r.id,
+                        text: r.remarks.trim()
+                    });
+                }
+            });
+            for (let d in DEPTS) data[d].classes = sortClassesByGrade(classOrder[d]);
+        }
+
+        // 保存到云：增量更新，不删除任何数据
+        async function saveToCloud() {
+            const btn = document.getElementById("btn-save");
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "保存中...";
+            
+            syncDragOrderToData();
 
             let courseBatch = [];
             let remarkBatch = [];
             const BATCH_SIZE = 100;
 
             for (let d in DEPTS) {
+                const existingClassNames = new Set();
                 for (let [k, v] of Object.entries(data[d].courses)) {
                     let [cn, day, pd] = k.split("-");
+                    existingClassNames.add(cn);
                     const course = v.c?.trim() === "" ? null : v.c;
                     const teacher = v.t?.trim() === "" ? null : v.t;
                     courseBatch.push({
@@ -334,41 +418,86 @@ async function loadAllData() {
                         period: +pd,
                         course_name: course,
                         teacher_name: teacher,
-                        modified_key: modifiedKeys.has(k) ? [k] : []
+                        modified_key: modifiedKeys.has(k) ? [`${k}|${modifiedKeys.get(k)}`] : []
                     });
                 }
-                if (data[d].remarks && data[d].remarks.trim() !== "") {
+                for (let cls of data[d].classes) {
+                    const stdCls = standardizeClassName(cls);
+                    if (!existingClassNames.has(stdCls)) {
+                        courseBatch.push({
+                            dept_id: d,
+                            class_name: stdCls,
+                            day: 0,
+                            period: 0,
+                            course_name: null,
+                            teacher_name: null,
+                            modified_key: []
+                        });
+                    }
+                }
+                data[d].remarksList.forEach(item => {
                     remarkBatch.push({
                         dept_id: d,
-                        remarks: data[d].remarks,
+                        remarks: item.text,
+                        class_name: null,
+                        day: null,
+                        period: null,
+                        course_name: null,
+                        teacher_name: null,
                         modified_key: []
                     });
-                }
+                });
             }
 
-            // 插入课程
-            for (let i = 0; i < courseBatch.length; i += BATCH_SIZE) {
-                const slice = courseBatch.slice(i, i + BATCH_SIZE);
-                const { error: insErr } = await supabaseClient.from("timetable_data").insert(slice);
-                if (insErr) {
-                    console.error("课程插入失败", insErr);
-                    alert("保存失败：" + insErr.message);
-                    return;
-                }
-            }
+            const allBatch = [...courseBatch, ...remarkBatch];
+            let backupData = [];
 
-            // 插入备注
-            for (let i = 0; i < remarkBatch.length; i += BATCH_SIZE) {
-                const slice = remarkBatch.slice(i, i + BATCH_SIZE);
-                const { error: remErr } = await supabaseClient.from("timetable_data").insert(slice);
-                if (remErr) {
-                    console.error("备注插入失败", remErr);
-                    alert("备注保存失败");
-                    return;
+            try {
+                const { data: existingRows, error: fetchError } = await supabaseClient.from("timetable_data").select("*");
+                if (fetchError) {
+                    console.error("备份数据失败:", fetchError);
+                    throw new Error("备份数据失败");
                 }
-            }
+                backupData = existingRows || [];
 
-            alert("✅ 已成功保存至云数据库！");
+                for (let d in DEPTS) {
+                    await supabaseClient.from("timetable_data").delete()
+                        .eq("dept_id", d);
+                }
+                
+                for (let i = 0; i < allBatch.length; i += BATCH_SIZE) {
+                    const slice = allBatch.slice(i, i + BATCH_SIZE);
+                    const { error: insErr } = await supabaseClient.from("timetable_data").insert(slice);
+                    if (insErr) {
+                        console.error("数据插入失败", insErr);
+                        throw new Error("数据插入失败：" + insErr.message);
+                    }
+                }
+
+                modifiedKeys.clear();
+                alert("✅ 已成功保存至云数据库！");
+            } catch (err) {
+                console.error("保存异常:", err);
+                
+                if (backupData.length > 0) {
+                    const { error: clearError } = await supabaseClient.from("timetable_data").delete().not("id", "is", null);
+                    if (!clearError) {
+                        const cleanBackup = backupData.map(({ id, ...rest }) => rest);
+                        for (let i = 0; i < cleanBackup.length; i += BATCH_SIZE) {
+                            const slice = cleanBackup.slice(i, i + BATCH_SIZE);
+                            await supabaseClient.from("timetable_data").insert(slice);
+                        }
+                    }
+                }
+                
+                alert("❌ 保存失败，已恢复原有数据：" + err.message);
+                await loadAllData();
+                renderAll();
+            } finally {
+                const btn = document.getElementById("btn-save");
+                btn.disabled = false;
+                btn.innerHTML = "先保存修改";
+            }
         }
 
         function syncDragOrderToData() {
@@ -418,14 +547,13 @@ async function loadAllData() {
             if (teacher && hasConflict(d, c, dy, p, teacher)) return alert("⚠ 教师时段冲突");
             const key = `${c}-${dy}-${p}`;
             data[d].courses[key] = { c: course, t: teacher };
-            // 修改课时直接加入云端标记集合
-            modifiedKeys.add(key);
+            modifiedKeys.set(key, Date.now());
             editModal.hide();
             renderDept(d);
             initDragSort();
         }
 
-        function clearOne() {
+        async function clearOne() {
             const d = document.getElementById("m_dept").value;
             const c = standardizeClassName(document.getElementById("m_class").value);
             const dy = +document.getElementById("m_day").value;
@@ -433,6 +561,13 @@ async function loadAllData() {
             const key = `${c}-${dy}-${p}`;
             delete data[d].courses[key];
             modifiedKeys.delete(key);
+            
+            await supabaseClient.from("timetable_data").delete()
+                .eq("dept_id", d)
+                .eq("class_name", c)
+                .eq("day", dy)
+                .eq("period", p);
+            
             editModal.hide();
             renderDept(d);
             initDragSort();
@@ -460,23 +595,27 @@ async function loadAllData() {
             renderDept(d);
             initDragSort();
         }
-        function deleteClassFromModal() {
+        async function deleteClassFromModal() {
             const d = document.getElementById("edit_dept").value;
             const name = standardizeClassName(document.getElementById("old_class_name").value);
             if (!confirm("确定删除班级：" + name)) return;
             data[d].classes = data[d].classes.filter(x => x !== name);
-            // 删除班级同步清理标记
             for (let k in data[d].courses) {
                 if (k.startsWith(name + "-")) {
                     modifiedKeys.delete(k);
                     delete data[d].courses[k];
                 }
             }
+            
+            await supabaseClient.from("timetable_data").delete()
+                .eq("dept_id", d)
+                .eq("class_name", name);
+            
             editClassModal.hide();
             renderDept(d);
             initDragSort();
         }
-        function saveEditClass() {
+        async function saveEditClass() {
             const d = document.getElementById("edit_dept").value;
             const old = standardizeClassName(document.getElementById("old_class_name").value);
             const neo = standardizeClassName(document.getElementById("edit_class_name").value);
@@ -486,20 +625,27 @@ async function loadAllData() {
             for (let k in data[d].courses) {
                 const newKey = k.replace(old + "-", neo + "-");
                 nc[newKey] = data[d].courses[k];
-                // 修改标记同步替换key
                 if (modifiedKeys.has(k)) {
+                    const ts = modifiedKeys.get(k);
                     modifiedKeys.delete(k);
-                    modifiedKeys.add(newKey);
+                    modifiedKeys.set(newKey, ts);
                 }
             }
             data[d].courses = nc;
             data[d].classes = sortClassesByGrade(data[d].classes);
+            
+            await supabaseClient.from("timetable_data").delete()
+                .eq("dept_id", d)
+                .eq("class_name", old);
+            
             editClassModal.hide();
             renderDept(d);
             initDragSort();
         }
 
         async function importTimetable() {
+            if (!confirm("确定导入课表？这将清空数据库中的所有现有数据并替换为导入的数据！")) return;
+            
             let inp = document.createElement("input");
             inp.type = "file"; inp.accept = ".xlsx,.xls";
             inp.onchange = async e => {
@@ -507,15 +653,18 @@ async function loadAllData() {
                 let r = new FileReader();
                 r.readAsArrayBuffer(f);
                 r.onload = async ev => {
-                    for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
-                    modifiedKeys.clear();//导入清空修改标记
+                    // 先清空数据库
+                    await supabaseClient.from("timetable_data").delete().not("id", "is", null);
+                    
+                    // 导入重置为多条备注数组
+                    for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarksList: [] };
+                    modifiedKeys.clear();
                     let wb = XLSX.read(ev.target.result, { type: "array" });
                     wb.SheetNames.forEach(s => {
                         let j = XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1 });
                         let cur = null;
                         j.forEach((row, idx) => {
                             let t = row?.join("")?.replace(/\s/g, "") || "";
-                            // 匹配新5个系部名称
                             if (t.includes("高考部")) cur = "dept1";
                             else if (t.includes("艺教设计部")) cur = "dept2";
                             else if (t.includes("信息商贸部")) cur = "dept3";
@@ -562,7 +711,7 @@ async function loadAllData() {
                 "other": "FFFFFF"
             };
             const head1 = "F5F5F5";
-            const head2 = "E3F2FD";
+            const head2 = "F4B084";
 
             const wb = XLSX.utils.book_new();
             const aoa = [];
@@ -570,18 +719,30 @@ async function loadAllData() {
             let r = 0;
             let hasAnyData = false;
 
+            const borderStyle = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+            const centerAlign = { wrapText: true, vertical: "center", horizontal: "center" };
+            const headerFont = { bold: true, sz: 12 };
+            const deptTitleFont = { bold: true, sz: 17 };
+            const normalFont = { sz: 10 };
+
+            const deptsWithData = [];
             for (let d in DEPTS) {
+                if ((data[d].classes || []).length > 0) {
+                    deptsWithData.push(d);
+                }
+            }
+            hasAnyData = deptsWithData.length > 0;
+
+            deptsWithData.forEach((d, idx) => {
                 const dn = DEPTS[d].name;
                 const cls = data[d].classes || [];
-                if (!cls.length) continue;
-                hasAnyData = true;
 
-                aoa.push([{ v: dn, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } }]);
+                aoa.push([{ v: dn, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" }, font: deptTitleFont, alignment: centerAlign, border: borderStyle } }]);
                 merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 16 } });
                 r++;
 
                 const week = ["班级", "星期一", "", "", "", "星期二", "", "", "星期三", "", "", "星期四", "", "", "星期五", "", ""];
-                aoa.push(week.map(v => ({ v, s: { fill: { fgColor: { rgb: head2 }, patternType: "solid" } } })));
+                aoa.push(week.map(v => ({ v, s: { fill: { fgColor: { rgb: head2 }, patternType: "solid" }, font: headerFont, alignment: centerAlign, border: borderStyle } })));
                 merges.push(
                     { s: { r: r, c: 1 }, e: { r: r, c: 4 } },
                     { s: { r: r, c: 5 }, e: { r: r, c: 7 } },
@@ -592,48 +753,90 @@ async function loadAllData() {
                 r++;
 
                 const period = ["节次", "1-2", "3-4", "5-6", "7", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6"];
-                aoa.push(period.map(v => ({ v, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } })));
+                aoa.push(period.map(v => ({ v, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" }, font: headerFont, alignment: centerAlign, border: borderStyle } })));
                 r++;
 
                 cls.forEach(cn => {
                     const std = standardizeClassName(cn);
                     const g = getClassGrade(cn);
-                    const rgb = colorMap[g] || colorMap.other;
+                    const baseColor = colorMap[g] || colorMap.other;
 
-                    const row1 = [cn];
-                    const row2 = [""];
+                    const row1Cells = [];
+                    const row2Cells = [];
                     for (let day = 0; day < 5; day++) {
                         for (let p = 0; p < DAY_PERIODS[day].length; p++) {
                             const k = `${std}-${day}-${p}`;
                             const item = data[d].courses[k] || { c: "", t: "" };
-                            row1.push(item.c);
-                            row2.push(item.t);
+
+                            const isModified = modifiedKeys.has(k);
+                            const isImperfect = isImperfectContent(item.c, item.t);
+                            const isConflict = hasConflict(d, std, day, p, item.t);
+
+                            let bgColor = "FFFFFF";
+                            let cellFont = normalFont;
+                            if (isConflict) {
+                                bgColor = "FF5252";
+                                cellFont = { sz: 12, color: { rgb: "FFFFFF" } };
+                            } else if (isModified) {
+                                bgColor = "FF9800";
+                                cellFont = { sz: 12, bold: true, color: { rgb: "FFFFFF" } };
+                            } else if (isImperfect) {
+                                bgColor = "FFEBEE";
+                            }
+
+                            const cellStyle = { fill: { fgColor: { rgb: bgColor }, patternType: "solid" }, font: cellFont, alignment: centerAlign, border: borderStyle };
+                            row1Cells.push({ v: item.c, s: cellStyle });
+                            row2Cells.push({ v: item.t, s: cellStyle });
                         }
                     }
 
-                    const style = { fill: { fgColor: { rgb: rgb }, patternType: "solid" } };
-                    aoa.push(row1.map(v => ({ v, s: style })));
+                    const classStyle = { fill: { fgColor: { rgb: baseColor }, patternType: "solid" }, font: { bold: true, sz: 11}, alignment: centerAlign, border: borderStyle };
+                    aoa.push([{ v: cn, s: classStyle }, ...row1Cells]);
                     const r1 = r++;
-                    aoa.push(row2.map(v => ({ v, s: style })));
+                    aoa.push([{ v: "", s: classStyle }, ...row2Cells]);
                     const r2 = r++;
 
                     merges.push({ s: { r: r1, c: 0 }, e: { r: r2, c: 0 } });
                 });
 
-                aoa.push([]);
-                r++;
-            }
+                if (data[d].remarksList && data[d].remarksList.length > 0) {
+                    const remarkStyle = { fill: { fgColor: { rgb: "F8F9FA" }, patternType: "solid" }, font: { italic: true, sz: 9 }, alignment: { wrapText: true, vertical: "center", horizontal: "left" }, border: borderStyle };
+                    data[d].remarksList.forEach(item => {
+                        aoa.push([{ v: item.text || "", s: remarkStyle }, ...Array(16).fill({ v: "", s: remarkStyle })]);
+                        merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 16 } });
+                        r++;
+                    });
+                }
+
+                if (idx < deptsWithData.length - 1) {
+                    for (let i = 0; i < 3; i++) {
+                        aoa.push(Array(17).fill({ v: "", s: {} }));
+                        r++;
+                    }
+                }
+            });
 
             if (!hasAnyData) {
-                aoa.push([{ v: "全校课表", s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } }]);
+                aoa.push([{ v: "全校课表", s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" }, font: deptTitleFont, alignment: centerAlign, border: borderStyle } }]);
                 merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 16 } });
-                aoa.push(["班级", "星期一", "", "", "", "星期二", "", "", "星期三", "", "", "星期四", "", "", "星期五", "", ""].map(v => ({ v, s: { fill: { fgColor: { rgb: head2 }, patternType: "solid" } } })));
-                aoa.push(["节次", "1-2", "3-4", "5-6", "7", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6"].map(v => ({ v, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" } } })));
+                aoa.push(["班级", "星期一", "", "", "", "星期二", "", "", "星期三", "", "", "星期四", "", "", "星期五", "", ""].map(v => ({ v, s: { fill: { fgColor: { rgb: head2 }, patternType: "solid" }, font: headerFont, alignment: centerAlign, border: borderStyle } })));
+                aoa.push(["节次", "1-2", "3-4", "5-6", "7", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6", "1-2", "3-4", "5-6"].map(v => ({ v, s: { fill: { fgColor: { rgb: head1 }, patternType: "solid" }, font: headerFont, alignment: centerAlign, border: borderStyle } })));
             }
 
             const ws = XLSX.utils.aoa_to_sheet(aoa);
             ws['!merges'] = merges;
-            ws['!cols'] = Array(17).fill({ wch: 13 });
+            ws['!cols'] = [
+                { wch: 18 },
+                { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+                { wch: 12 }, { wch: 12 }, { wch: 12 },
+                { wch: 12 }, { wch: 12 }, { wch: 12 },
+                { wch: 12 }, { wch: 12 }, { wch: 12 },
+                { wch: 12 }, { wch: 12 }, { wch: 12 }
+            ];
+            ws['!rows'] = [];
+            for (let i = 0; i < aoa.length; i++) {
+                ws['!rows'].push({ hpt: 28 });
+            }
 
             XLSX.utils.book_append_sheet(wb, ws, "全校课表");
             XLSX.writeFile(wb, "5系部课表_带底色.xlsx", { bookSST: false });
@@ -651,7 +854,8 @@ async function loadAllData() {
                 return;
             }
             modifiedKeys.clear();
-            for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarks: "" };
+            // 清空后重置为多条备注数组
+            for (let d in DEPTS) data[d] = { classes: [], courses: {}, remarksList: [] };
             renderAll();
             alert("✅ 已清空所有数据");
         }
@@ -688,18 +892,48 @@ async function loadAllData() {
                     for (let p = 0; p < DAY_PERIODS[day].length; p++) {
                         const key = `${stdCn}-${day}-${p}`;
                         const it = data[deptId].courses[key] || { c: "", t: "" };
-                        const bad = hasConflict(deptId, stdCn, day, p, it.t);
+                        // ===================== 修改后的单元格样式判断 =====================
+                        const badConflict = hasConflict(deptId, stdCn, day, p, it.t);
+                        const isImperfect = isImperfectContent(it.c, it.t);
                         let cls = "cell lesson-cell";
-                        const isEmpty = !it.c || !it.t;
-                        if (isEmpty) cls += " cell-empty";
-                        else if (bad) cls += " cell-conflict";
-                        else if (modifiedKeys.has(key)) cls += " cell-modified";
+                        // 优先级：撞课冲突红色 > 修改橙色 > 未完善浅红(cell-empty)
+                        if (badConflict) {
+                            cls += " cell-conflict";
+                        } else if (modifiedKeys.has(key)) {
+                            cls += " cell-modified";
+                        } else if (isImperfect) {
+                            cls += " cell-empty";
+                        }
+                        // =================================================================
                         html += `<td class="${cls}" data-dept="${deptId}" data-class="${stdCn}" data-day="${day}" data-period="${p}">${it.c}${it.t ? "<br><small>" + it.t + "</small>" : ""}</td>`;
                     }
                 }
                 html += `</tr>`;
             });
-            html += `<tr class="remark-row"><td colspan="17"><div class="d-flex align-items-center"><span class="fw-bold me-2">备注：</span><input class="form-control" value="${data[deptId].remarks || ""}" oninput="data['${deptId}'].remarks=this.value"></div></td></tr>`;
+            // ========== 多条备注渲染区域（按钮缩小适配） ==========
+            let remarkHtml = `<tr class="remark-row"><td colspan="17">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="fw-bold">本系备注列表</span>
+                <button class="btn btn-sm btn-success" onclick="addNewRemark('${deptId}')">+新增备注</button>
+            </div>
+            <div class="remark-area">`;
+
+            if (data[deptId].remarksList.length === 0) {
+                remarkHtml += `<div class="text-secondary">暂无备注，点击上方新增按钮添加</div>`;
+            } else {
+                data[deptId].remarksList.forEach((item, idx) => {
+                    remarkHtml += `
+                    <div class="d-flex align-items-center gap-2 mb-2 border p-2 rounded">
+                        <input class="form-control form-control-sm" 
+                               value="${item.text}" 
+                               oninput="updateRemarkText('${deptId}',${idx},this.value)">
+                        <button class="btn btn-sm btn-danger" onclick="deleteRemark('${deptId}',${idx})">删除</button>
+                    </div>`;
+                });
+            }
+            remarkHtml += `</div></td></tr>`;
+            html += remarkHtml;
+
             tb.innerHTML = html;
             initDragSort();
         }
