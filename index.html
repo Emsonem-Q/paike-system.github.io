@@ -361,11 +361,12 @@ function isImperfectContent(courseStr, teacherStr) {
                 if (!did || !DEPTS.hasOwnProperty(did)) return;
 
                 // 课表行（存在班级名称）
-                if (cname) {
-                    if (!classOrder[did].includes(cname)) classOrder[did].push(cname);
+                if (r.class_name) {
+                    const stdName = standardizeClassName(r.class_name);
+                    if (stdName && !classOrder[did].includes(stdName)) classOrder[did].push(stdName);
                     // 只有当课程或教师有值时才创建课程条目（避免空班级的占位记录产生幽灵条目）
                     if (r.course_name || r.teacher_name) {
-                        const key = `${cname}-${r.day}-${r.period}`;
+                        const key = `${stdName}-${r.day}-${r.period}`;
                         data[did].courses[key] = { c: r.course_name ?? "", t: r.teacher_name ?? "" };
                         if (r.modified_key && Array.isArray(r.modified_key)) {
                             const expireTime = MODIFY_EXPIRE_DAYS * 24 * 60 * 60 * 1000;
@@ -429,8 +430,8 @@ function isImperfectContent(courseStr, teacherStr) {
                             class_name: stdCls,
                             day: 0,
                             period: 0,
-                            course_name: null,
-                            teacher_name: null,
+                            course_name: "",
+                            teacher_name: "",
                             modified_key: []
                         });
                     }
@@ -776,10 +777,10 @@ function isImperfectContent(courseStr, teacherStr) {
                             let cellFont = normalFont;
                             if (isConflict) {
                                 bgColor = "FF5252";
-                                cellFont = { sz: 12, color: { rgb: "FFFFFF" } };
+                                cellFont = { sz: 12};
                             } else if (isModified) {
                                 bgColor = "FF9800";
-                                cellFont = { sz: 12, bold: true, color: { rgb: "FFFFFF" } };
+                                cellFont = { sz: 12};
                             } else if (isImperfect) {
                                 bgColor = "FFEBEE";
                             }
